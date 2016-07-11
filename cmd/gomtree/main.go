@@ -75,7 +75,7 @@ func main() {
 	}
 
 	// -p <path>
-	var rootPath string = "."
+	var rootPath = "."
 	if *flPath != "" {
 		rootPath = *flPath
 	}
