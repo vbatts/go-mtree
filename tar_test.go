@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func ExampleTar() {
+func ExampleStreamer() {
 	fh, err := os.Open("./testdata/test.tar")
 	if err != nil {
 		// handle error ...

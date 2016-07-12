@@ -10,11 +10,15 @@ import (
 	"strings"
 )
 
+// Streamer interface that wraps an io.ReadCloser with a function that will
+// return it's Hierarchy
 type Streamer interface {
 	io.ReadCloser
 	Hierarchy() (*DirectoryHierarchy, error)
 }
 
+// NewTarStreamer streams a tar archive and creates a file hierarchy based off
+// of the tar metadata headers
 func NewTarStreamer(r io.Reader, keywords []string) Streamer {
 	pR, pW := io.Pipe()
 	ts := &tarStream{
