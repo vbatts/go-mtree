@@ -206,7 +206,10 @@ var (
 	}
 	linkKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (string, error) {
 		if sys, ok := info.Sys().(*tar.Header); ok {
-			return fmt.Sprintf("link=%s", sys.Linkname), nil
+			if sys.Linkname != "" {
+				return fmt.Sprintf("link=%s", sys.Linkname), nil
+			}
+			return "", nil
 		}
 
 		if info.Mode()&os.ModeSymlink != 0 {
