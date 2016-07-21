@@ -19,7 +19,11 @@ func (dh DirectoryHierarchy) WriteTo(w io.Writer) (n int64, err error) {
 	sort.Sort(byPos(dh.Entries))
 	var sum int64
 	for _, e := range dh.Entries {
-		i, err := io.WriteString(w, e.String()+"\n")
+		str, err := e.String()
+		if err != nil {
+			return sum, err
+		}
+		i, err := io.WriteString(w, str+"\n")
 		if err != nil {
 			return sum, err
 		}
@@ -47,28 +51,39 @@ type Entry struct {
 }
 
 // Path provides the full path of the file, despite RelativeType or FullType
-func (e Entry) Path() string {
-	if e.Parent == nil || e.Type == FullType {
-		return filepath.Clean(e.Name)
+func (e Entry) Path() (string, error) {
+	decodedName, err := Unvis(e.Name)
+	if err != nil {
+		return "", err
 	}
-	return filepath.Clean(filepath.Join(e.Parent.Path(), e.Name))
+	if e.Parent == nil || e.Type == FullType {
+		return filepath.Clean(decodedName), nil
+	}
+	parentName, err := e.Parent.Path()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(filepath.Join(parentName, decodedName)), nil
 }
 
-func (e Entry) String() string {
+func (e Entry) String() (string, error) {
 	if e.Raw != "" {
-		return e.Raw
+		return e.Raw, nil
 	}
 	if e.Type == BlankType {
-		return ""
+		return "", nil
 	}
 	if e.Type == DotDotType {
-		return e.Name
+		return e.Name, nil
 	}
-	// TODO(vbatts) if type is RelativeType and a keyword of not type=dir
+	decodedName, err := Unvis(e.Name)
+	if err != nil {
+		return "", err
+	}
 	if e.Type == SpecialType || e.Type == FullType || inSlice("type=dir", e.Keywords) {
-		return fmt.Sprintf("%s %s", e.Name, strings.Join(e.Keywords, " "))
+		return fmt.Sprintf("%s %s", decodedName, strings.Join(e.Keywords, " ")), nil
 	}
-	return fmt.Sprintf("    %s %s", e.Name, strings.Join(e.Keywords, " "))
+	return fmt.Sprintf("    %s %s", decodedName, strings.Join(e.Keywords, " ")), nil
 }
 
 // EntryType are the formats of lines in an mtree spec file

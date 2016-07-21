@@ -50,7 +50,11 @@ func Check(root string, dh *DirectoryHierarchy, keywords []string) (*Result, err
 				creator.curSet = nil
 			}
 		case RelativeType, FullType:
-			info, err := os.Lstat(e.Path())
+			pathname, err := e.Path()
+			if err != nil {
+				return nil, err
+			}
+			info, err := os.Lstat(pathname)
 			if err != nil {
 				return nil, err
 			}
@@ -65,17 +69,17 @@ func Check(root string, dh *DirectoryHierarchy, keywords []string) (*Result, err
 			for _, kv := range kvs {
 				keywordFunc, ok := KeywordFuncs[kv.Keyword()]
 				if !ok {
-					return nil, fmt.Errorf("Unknown keyword %q for file %q", kv.Keyword(), e.Path())
+					return nil, fmt.Errorf("Unknown keyword %q for file %q", kv.Keyword(), pathname)
 				}
 				if keywords != nil && !inSlice(kv.Keyword(), keywords) {
 					continue
 				}
-				curKeyVal, err := keywordFunc(filepath.Join(root, e.Path()), info)
+				curKeyVal, err := keywordFunc(filepath.Join(root, pathname), info)
 				if err != nil {
 					return nil, err
 				}
 				if string(kv) != curKeyVal {
-					failure := Failure{Path: e.Path(), Keyword: kv.Keyword(), Expected: kv.Value(), Got: KeyVal(curKeyVal).Value()}
+					failure := Failure{Path: pathname, Keyword: kv.Keyword(), Expected: kv.Value(), Got: KeyVal(curKeyVal).Value()}
 					result.Failures = append(result.Failures, failure)
 				}
 			}
