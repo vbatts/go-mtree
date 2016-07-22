@@ -54,7 +54,11 @@ func main() {
 			currentKeywords = append([]string{"type"}, currentKeywords...)
 		}
 	} else {
-		currentKeywords = mtree.DefaultKeywords[:]
+		if *flTar != "" {
+			currentKeywords = mtree.DefaultTarKeywords[:]
+		} else {
+			currentKeywords = mtree.DefaultKeywords[:]
+		}
 	}
 	// -K <keywords>
 	if *flAddKeywords != "" {
