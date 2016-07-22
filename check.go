@@ -30,6 +30,10 @@ const (
 	// present in the manifest do not match the keywords generated for the same
 	// object in the directory state being checked.
 	Modified FailureType = "modified"
+
+	// Present represents a discrepancy where an object is not present in the
+	// manifest but is present in the directory state being checked.
+	Present FailureType = "present"
 )
 
 // Failure represents a discrepancy between a manifest and the state it is
@@ -118,6 +122,35 @@ func (m missing) Type() FailureType {
 	return Missing
 }
 
+// An object that is not listed in the manifest but is present in the state.
+type present struct {
+	path string
+}
+
+func (p present) String() string {
+	return fmt.Sprintf("%q: unexpected object present", p.path)
+}
+
+func (p present) MarshalJSON() ([]byte, error) {
+	// Because of Go's reflection policies, we have to make an anonymous struct
+	// with the fields exported.
+	return json.Marshal(struct {
+		Type FailureType `json:"type"`
+		Path string      `json:"path"`
+	}{
+		Type: p.Type(),
+		Path: p.path,
+	})
+}
+
+func (p present) Path() string {
+	return p.path
+}
+
+func (p present) Type() FailureType {
+	return Missing
+}
+
 // Check a root directory path against the DirectoryHierarchy, regarding only
 // the available keywords from the list and each entry in the hierarchy.
 // If keywords is nil, the check all present in the DirectoryHierarchy
@@ -134,6 +167,9 @@ func Check(root string, dh *DirectoryHierarchy, keywords []string) (*Result, err
 	sort.Sort(byPos(creator.DH.Entries))
 
 	var result Result
+	seen := map[string]struct{}{
+		".": struct{}{},
+	}
 	for i, e := range creator.DH.Entries {
 		switch e.Type {
 		case SpecialType:
@@ -153,6 +189,8 @@ func Check(root string, dh *DirectoryHierarchy, keywords []string) (*Result, err
 				}
 				return nil, err
 			}
+
+			seen[e.Path()] = struct{}{}
 
 			var kvs KeyVals
 			if creator.curSet != nil {
@@ -184,5 +222,24 @@ func Check(root string, dh *DirectoryHierarchy, keywords []string) (*Result, err
 			}
 		}
 	}
+
+	// To find any paths we haven't seen already.
+	if err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+		/* We shouldn't get not-found errors. */
+		if err != nil {
+			return err
+		}
+
+		if _, ok := seen[path]; !ok {
+			result.Failures = append(result.Failures, present{
+				path: path,
+			})
+		}
+
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("Unexpected error ocurred while walking directory: %s", err)
+	}
+
 	return &result, nil
 }
