@@ -45,7 +45,7 @@ var formats = map[string]func(*mtree.Result) string{
 	"text": func(r *mtree.Result) string {
 		var buffer bytes.Buffer
 		for _, fail := range r.Failures {
-			fmt.Fprintf(&buffer, "modified\t%s\n", fail.Path)
+			fmt.Fprintf(&buffer, "%s\t%s\n", fail.Type(), fail.Path())
 		}
 		return buffer.String()
 	},

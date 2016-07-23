@@ -1,6 +1,7 @@
 package mtree
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,17 +14,108 @@ type Result struct {
 	Failures []Failure `json:"failures"`
 }
 
-// Failure of a particular keyword for a path
-type Failure struct {
-	Path     string `json:"path"`
-	Keyword  string `json:"keyword"`
-	Expected string `json:"expected"`
-	Got      string `json:"got"`
+// FailureType represents a type of Failure encountered when checking for
+// discrepancies between a manifest and a directory state.
+type FailureType string
+
+const (
+	// None means no discrepancy (unused).
+	None FailureType = "none"
+
+	// Missing represents a discrepancy where an object is present in the
+	// manifest but is not present in the directory state being checked.
+	Missing FailureType = "missing"
+
+	// Modified represents a discrepancy where one or more of the keywords
+	// present in the manifest do not match the keywords generated for the same
+	// object in the directory state being checked.
+	Modified FailureType = "modified"
+)
+
+// Failure represents a discrepancy between a manifest and the state it is
+// being compared against. The discrepancy may take the form of a missing,
+// erroneous or otherwise modified object.
+type Failure interface {
+	// String returns a "pretty" formatting for a Failure. It's based on the
+	// BSD mtree(8) format, so that we are compatible.
+	String() string
+
+	// MarshalJSON ensures that we fulfil the JSON Marshaler interface.
+	MarshalJSON() ([]byte, error)
+
+	// Path returns the path (relative to the root of the tree) that this
+	// discrepancy refers to.
+	Path() string
+
+	// Type returns the type of failure that occurred.
+	Type() FailureType
 }
 
-// String returns a "pretty" formatting for a Failure
-func (f Failure) String() string {
-	return fmt.Sprintf("%q: keyword %q: expected %s; got %s", f.Path, f.Keyword, f.Expected, f.Got)
+// An object modified from the manifest state.
+type modified struct {
+	path     string
+	keyword  string
+	expected string
+	got      string
+}
+
+func (m modified) String() string {
+	return fmt.Sprintf("%q: keyword %q: expected %s; got %s", m.path, m.keyword, m.expected, m.got)
+}
+
+func (m modified) MarshalJSON() ([]byte, error) {
+	// Because of Go's reflection policies, we have to make an anonymous struct
+	// with the fields exported.
+	return json.Marshal(struct {
+		Type     FailureType `json:"type"`
+		Path     string      `json:"path"`
+		Keyword  string      `json:"keyword"`
+		Expected string      `json:"expected"`
+		Got      string      `json:"got"`
+	}{
+		Type:     m.Type(),
+		Path:     m.path,
+		Keyword:  m.keyword,
+		Expected: m.expected,
+		Got:      m.got,
+	})
+}
+
+func (m modified) Path() string {
+	return m.path
+}
+
+func (m modified) Type() FailureType {
+	return Modified
+}
+
+// An object that is listed in the manifest but is not present in the state.
+type missing struct {
+	path string
+}
+
+func (m missing) String() string {
+	return fmt.Sprintf("%q: expected object missing", m.path)
+}
+
+func (m missing) MarshalJSON() ([]byte, error) {
+	// Because of Go's reflection policies, we have to make an anonymous struct
+	// with the fields exported.
+	return json.Marshal(struct {
+		Type FailureType `json:"type"`
+		Path string      `json:"path"`
+	}{
+		Type: m.Type(),
+		Path: m.path,
+	})
+}
+
+func (m missing) Path() string {
+	return m.path
+}
+
+func (m missing) Type() FailureType {
+	return Missing
 }
 
 // Check a root directory path against the DirectoryHierarchy, regarding only
@@ -53,6 +145,12 @@ func Check(root string, dh *DirectoryHierarchy, keywords []string) (*Result, err
 		case RelativeType, FullType:
 			info, err := os.Lstat(e.Path())
 			if err != nil {
+				if os.IsNotExist(err) {
+					result.Failures = append(result.Failures, missing{
+						path: e.Path(),
+					})
+					continue
+				}
 				return nil, err
 			}
 
@@ -76,8 +174,12 @@ func Check(root string, dh *DirectoryHierarchy, keywords []string) (*Result, err
 					return nil, err
 				}
 				if string(kv) != curKeyVal {
-					failure := Failure{Path: e.Path(), Keyword: kv.Keyword(), Expected: kv.Value(), Got: KeyVal(curKeyVal).Value()}
-					result.Failures = append(result.Failures, failure)
+					result.Failures = append(result.Failures, modified{
+						path:     e.Path(),
+						keyword:  kv.Keyword(),
+						expected: kv.Value(),
+						got:      KeyVal(curKeyVal).Value(),
+					})
 				}
 			}
 		}
