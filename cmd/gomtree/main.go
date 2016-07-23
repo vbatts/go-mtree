@@ -19,7 +19,7 @@ var (
 	flAddKeywords  = flag.String("K", "", "Add the specified (delimited by comma or space) keywords to the current set of keywords")
 	flUseKeywords  = flag.String("k", "", "Use the specified (delimited by comma or space) keywords as the current set of keywords")
 	flListKeywords = flag.Bool("list-keywords", false, "List the keywords available")
-	flResultFormat = flag.String("result-format", "bsd", "output the validation results using the given format (bsd, json, path)")
+	flResultFormat = flag.String("result-format", "bsd", "output the validation results using the given format (bsd, json, text)")
 )
 
 var formats = map[string]func(*mtree.Result) string{
@@ -41,11 +41,11 @@ var formats = map[string]func(*mtree.Result) string{
 		return buffer.String()
 	},
 
-	// Outputs only the paths which failed to validate.
-	"path": func(r *mtree.Result) string {
+	// Outputs only the failure type and paths which failed to validate.
+	"text": func(r *mtree.Result) string {
 		var buffer bytes.Buffer
 		for _, fail := range r.Failures {
-			fmt.Fprintln(&buffer, fail.Path)
+			fmt.Fprintf(&buffer, "modified\t%s\n", fail.Path)
 		}
 		return buffer.String()
 	},
