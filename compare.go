@@ -29,6 +29,10 @@ const (
 	// have different values (or have not been set in one of the
 	// manifests).
 	Modified DifferenceType = "modified"
+
+	// ErrorDifference represents an attempted update to the values of
+	// a keyword that failed
+	ErrorDifference DifferenceType = "errored"
 )
 
 // These functions return *type from the parameter. It's just shorthand, to
@@ -126,6 +130,7 @@ type KeyDelta struct {
 	name Keyword
 	old  string
 	new  string
+	err  error // used for update delta results
 }
 
 // Type returns the type of discrepancy encountered when comparing this key
