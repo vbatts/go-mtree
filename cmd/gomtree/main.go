@@ -36,6 +36,10 @@ var formats = map[string]func([]mtree.InodeDelta) string{
 		for _, delta := range d {
 			if delta.Type() == mtree.Modified {
 				fmt.Fprintln(&buffer, delta)
+			} else if delta.Type() == mtree.Missing {
+				fmt.Fprintln(&buffer, delta)
+			} else if delta.Type() == mtree.Extra {
+				fmt.Fprintln(&buffer, delta)
 			}
 		}
 		return buffer.String()
@@ -417,7 +421,6 @@ func main() {
 			if len(res) > 0 {
 				defer os.Exit(1)
 			}
-
 			out := formatFunc(res)
 			if _, err := os.Stdout.Write([]byte(out)); err != nil {
 				log.Println(err)
