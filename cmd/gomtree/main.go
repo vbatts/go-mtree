@@ -257,6 +257,19 @@ func app() error {
 		return nil
 	}
 
+	// no spec manifest has been provided yet, so look for it on stdin
+	if specDh == nil {
+		// load the hierarchy
+		specDh, err = mtree.ParseSpec(os.Stdin)
+		if err != nil {
+			return err
+		}
+
+		// We can't check against more fields than in the specKeywords list, so
+		// currentKeywords can only have a subset of specKeywords.
+		specKeywords = specDh.UsedKeywords()
+	}
+
 	// This is a validation.
 	if specDh != nil && stateDh != nil {
 		var res []mtree.InodeDelta
