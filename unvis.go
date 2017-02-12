@@ -63,9 +63,12 @@ func newParser(input string, flag VisFlag) *unvisParser {
 // <input>           ::= (<rune>)*
 // <rune>            ::= ("\" <escape-sequence>) | ("%" <escape-hex>) | <plain-rune>
 // <plain-rune>      ::= any rune
-// <escape-sequence> ::= ("x" <escape-hex>) | ("M") | <escape-cstyle> | <escape-octal>
-// <escape-hex>      ::= [0-9a-f] [0-9a-f]
+// <escape-sequence> ::= ("x" <escape-hex>) | ("M" <escape-meta>) | ("^" <escape-ctrl) | <escape-cstyle> | <escape-octal>
+// <escape-meta>     ::= ("-" <escape-meta1>) | ("^" <escape-ctrl>)
+// <escape-meta1>    ::= any rune
+// <escape-ctrl>     ::= "?" | any rune
 // <escape-cstyle>   ::= "\" | "n" | "r" | "b" | "a" | "v" | "t" | "f"
+// <escape-hex>      ::= [0-9a-f] [0-9a-f]
 // <escape-octal>    ::= [0-7] ([0-7] ([0-7])?)?
 
 func unvisPlainRune(p *unvisParser) ([]byte, error) {
@@ -155,6 +158,57 @@ func unvisEscapeDigits(p *unvisParser, base int, force bool) ([]byte, error) {
 	return []byte{char}, nil
 }
 
+func unvisEscapeCtrl(p *unvisParser, mask byte) ([]byte, error) {
+	ch, err := p.Peek()
+	if err != nil {
+		return nil, fmt.Errorf("escape ctrl: %s", err)
+	}
+	if ch > unicode.MaxLatin1 {
+		return nil, fmt.Errorf("escape ctrl: code %q outside latin-1 encoding", ch)
+	}
+
+	char := byte(ch) & 0x1f
+	if ch == '?' {
+		char = 0x7f
+	}
+
+	p.Next()
+	return []byte{mask | char}, nil
+}
+
+func unvisEscapeMeta(p *unvisParser) ([]byte, error) {
+	ch, err := p.Peek()
+	if err != nil {
+		return nil, fmt.Errorf("escape meta: %s", err)
+	}
+
+	mask := byte(0x80)
+
+	switch ch {
+	case '^':
+		// The same as "\^..." except we apply a mask.
+		p.Next()
+		return unvisEscapeCtrl(p, mask)
+
+	case '-':
+		p.Next()
+
+		ch, err := p.Peek()
+		if err != nil {
+			return nil, fmt.Errorf("escape meta1: %s", err)
+		}
+		if ch > unicode.MaxLatin1 {
+			return nil, fmt.Errorf("escape meta1: code %q outside latin-1 encoding", ch)
+		}
+
+		// Add mask to character.
+		p.Next()
+		return []byte{mask | byte(ch)}, nil
+	}
+
+	return nil, fmt.Errorf("escape meta: unknown escape char: %s", err)
+}
+
 func unvisEscapeSequence(p *unvisParser) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
@@ -173,10 +227,13 @@ func unvisEscapeSequence(p *unvisParser) ([]byte, error) {
 		p.Next()
 		return unvisEscapeDigits(p, 16, true)
 
-	case 'M':
-		// TODO
 	case '^':
-		// TODO
+		p.Next()
+		return unvisEscapeCtrl(p, 0x00)
+
+	case 'M':
+		p.Next()
+		return unvisEscapeMeta(p)
 
 	default:
 		return unvisEscapeCStyle(p)
