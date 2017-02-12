@@ -21,6 +21,20 @@ import (
 	"testing"
 )
 
+func TestUnvisError(t *testing.T) {
+	for _, test := range []string{
+		// Octal escape codes allow you to specify invalid byte values.
+		"\\777",
+		"\\420\\322\\455",
+		"\\652\\233",
+	} {
+		got, err := Unvis(test, DefaultVisFlags)
+		if err == nil {
+			t.Errorf("expected unvis(%q) to give an error, got %q", test, got)
+		}
+	}
+}
+
 func TestUnvisOctalEscape(t *testing.T) {
 	for _, test := range []struct {
 		input    string
@@ -34,6 +48,11 @@ func TestUnvisOctalEscape(t *testing.T) {
 		{"\\170YET\\01another test\\1\\\\82", "\170YET\001another test\001\\82"},
 		{"\\177MORE tests\\09a", "\177MORE tests\x009a"},
 		{"\\\\710more\\1215testing", "\\710more\1215testing"},
+		// Make sure that decoding unicode works properly, when it's been encoded as single bytes.
+		{"\\360\\237\\225\\264", "\U0001f574"},
+		{"T\\303\\234B\\304\\260TAK_UEKAE_K\\303\\266k_Sertifika_Hizmet_Sa\\304\\237lay\\304\\261c\\304\\261s\\304\\261_-_S\\303\\274r\\303\\274m_3.pem", "TÜBİTAK_UEKAE_Kök_Sertifika_Hizmet_Sağlayıcısı_-_Sürüm_3.pem"},
+		// Some invalid characters...
+		{"\\377\\2\\225\\264", "\xff\x02\x95\xb4"},
 	} {
 		got, err := Unvis(test.input, DefaultVisFlags)
 		if err != nil {
@@ -57,8 +76,11 @@ func TestUnvisHexEscape(t *testing.T) {
 		{"this is a test\\x13\\x52\\x6f", "this is a test\x13\x52\x6f"},
 		{"\\x170YET\\x01a\\x22nother test\\x11", "\x170YET\x01a\x22nother test\x11"},
 		{"\\\\x007more\\\\x215testing", "\\x007more\\x215testing"},
-		// Make sure that decoding unicode works properly.
+		// Make sure that decoding unicode works properly, when it's been encoded as single bytes.
 		{"\\xf0\\x9f\\x95\\xb4", "\U0001f574"},
+		{"T\\xc3\\x9cB\\xc4\\xb0TAK_UEKAE_K\\xc3\\xb6k_Sertifika_Hizmet_Sa\\xc4\\x9flay\\xc4\\xb1c\\xc4\\xb1s\\xc4\\xb1_-_S\\xc3\\xbcr\\xc3\\xbcm_3.pem", "TÜBİTAK_UEKAE_Kök_Sertifika_Hizmet_Sağlayıcısı_-_Sürüm_3.pem"},
+		// Some invalid characters...
+		{"\\xff\\x02\\x95\\xb4", "\xff\x02\x95\xb4"},
 	} {
 		got, err := Unvis(test.input, DefaultVisFlags)
 		if err != nil {

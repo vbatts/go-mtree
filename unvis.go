@@ -20,7 +20,7 @@ package govis
 import (
 	"fmt"
 	"strconv"
-	"unicode/utf8"
+	"unicode"
 )
 
 // unvisParser stores the current state of the token parser.
@@ -38,7 +38,7 @@ func (p *unvisParser) Next() {
 // Peek gets the current token.
 func (p *unvisParser) Peek() (rune, error) {
 	if p.idx >= len(p.tokens) {
-		return utf8.RuneError, fmt.Errorf("tried to read past end of token list")
+		return unicode.ReplacementChar, fmt.Errorf("tried to read past end of token list")
 	}
 	return p.tokens[p.idx], nil
 }
@@ -68,19 +68,26 @@ func newParser(input string, flag VisFlag) *unvisParser {
 // <escape-cstyle>   ::= "\" | "n" | "r" | "b" | "a" | "v" | "t" | "f"
 // <escape-octal>    ::= [0-7] ([0-7] ([0-7])?)?
 
-func unvisPlainRune(p *unvisParser) (string, error) {
+func unvisPlainRune(p *unvisParser) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
-		return "", fmt.Errorf("plain rune: %s", ch)
+		return nil, fmt.Errorf("plain rune: %s", ch)
 	}
 	p.Next()
-	return string(ch), nil
+
+	// XXX: Maybe we should not be converting to runes and then back to strings
+	//      here. Are we sure that the byte-for-byte representation is the
+	//      same? If the bytes change, then using these strings for paths will
+	//      break...
+
+	str := string(ch)
+	return []byte(str), nil
 }
 
-func unvisEscapeCStyle(p *unvisParser) (string, error) {
+func unvisEscapeCStyle(p *unvisParser) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
-		return "", fmt.Errorf("escape hex: %s", err)
+		return nil, fmt.Errorf("escape hex: %s", err)
 	}
 
 	output := ""
@@ -109,85 +116,62 @@ func unvisEscapeCStyle(p *unvisParser) (string, error) {
 		// Hidden marker.
 	default:
 		// XXX: We should probably allow falling through and return "\" here...
-		return "", fmt.Errorf("escape cstyle: unknown escape character: %q", ch)
+		return nil, fmt.Errorf("escape cstyle: unknown escape character: %q", ch)
 	}
 
 	p.Next()
-	return output, nil
+	return []byte(output), nil
 }
 
-func unvisEscapeHex(p *unvisParser) (string, error) {
-	var output rune
+func unvisEscapeDigits(p *unvisParser, base int, force bool) ([]byte, error) {
+	var code int
 
-	for i := 0; i < 2; i++ {
+	for i := int(0xFF); i > 0; i /= base {
 		ch, err := p.Peek()
 		if err != nil {
-			return "", fmt.Errorf("escape hex: %s", err)
+			if !force && i != 0xFF {
+				break
+			}
+			return nil, fmt.Errorf("escape base %d: %s", base, err)
 		}
 
-		digit, err := strconv.ParseInt(string(ch), 16, 32)
+		digit, err := strconv.ParseInt(string(ch), base, 8)
 		if err != nil {
-			return "", fmt.Errorf("escape hex: parse int: %s", err)
+			if !force && i != 0xFF {
+				break
+			}
+			return nil, fmt.Errorf("escape base %d: could not parse digit: %s", base, err)
 		}
 
-		output = (output << 4) | rune(digit)
+		code = (code * base) + int(digit)
 		p.Next()
 	}
 
-	// TODO: We need to handle runes properly to output byte strings again. In
-	//       particular, if rune has 0xf0 set then we know that we're currently
-	//       decoding a messed up string.
-	return string(output), nil
-}
-
-func unvisEscapeOctal(p *unvisParser) (string, error) {
-	var output rune
-	var err error
-
-	for i := 0; i < 3; i++ {
-		ch, err := p.Peek()
-		if err != nil {
-			if i == 0 {
-				err = fmt.Errorf("escape octal[first]: %s", err)
-			}
-			break
-		}
-
-		digit, err := strconv.ParseInt(string(ch), 8, 32)
-		if err != nil {
-			if i == 0 {
-				err = fmt.Errorf("escape octal[first]: parse int: %s", err)
-			}
-			break
-		}
-
-		output = (output << 3) | rune(digit)
-		p.Next()
+	if code > unicode.MaxLatin1 {
+		return nil, fmt.Errorf("escape base %d: code %q outside latin-1 encoding", base, code)
 	}
 
-	// TODO: We need to handle runes properly to output byte strings again. In
-	//       particular, if rune has 0xf0 set then we know that we're currently
-	//       decoding a messed up string.
-	return string(output), err
+	char := byte(code & 0xFF)
+	return []byte{char}, nil
 }
 
-func unvisEscapeSequence(p *unvisParser) (string, error) {
+func unvisEscapeSequence(p *unvisParser) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
-		return "", fmt.Errorf("escape sequence: %s", err)
+		return nil, fmt.Errorf("escape sequence: %s", err)
 	}
 
 	switch ch {
 	case '\\':
 		p.Next()
-		return "\\", nil
+		return []byte("\\"), nil
 
 	case '0', '1', '2', '3', '4', '5', '6', '7':
-		return unvisEscapeOctal(p)
+		return unvisEscapeDigits(p, 8, false)
 
 	case 'x':
 		p.Next()
-		return unvisEscapeHex(p)
+		return unvisEscapeDigits(p, 16, true)
 
 	case 'M':
 		// TODO
@@ -198,13 +182,13 @@ func unvisEscapeSequence(p *unvisParser) (string, error) {
 		return unvisEscapeCStyle(p)
 	}
 
-	return "", fmt.Errorf("escape sequence: unsupported sequence: %q", ch)
+	return nil, fmt.Errorf("escape sequence: unsupported sequence: %q", ch)
 }
 
-func unvisRune(p *unvisParser) (string, error) {
+func unvisRune(p *unvisParser) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
-		return "", fmt.Errorf("rune: %s", err)
+		return nil, fmt.Errorf("rune: %s", err)
 	}
 
 	switch ch {
@@ -216,7 +200,7 @@ func unvisRune(p *unvisParser) (string, error) {
 		// % HEX HEX only applies to HTTPStyle encodings.
 		if p.flag&VisHTTPStyle == VisHTTPStyle {
 			p.Next()
-			return unvisEscapeHex(p)
+			return unvisEscapeDigits(p, 16, true)
 		}
 		fallthrough
 
@@ -226,15 +210,15 @@ func unvisRune(p *unvisParser) (string, error) {
 }
 
 func unvis(p *unvisParser) (string, error) {
-	output := ""
+	var output []byte
 	for !p.End() {
 		ch, err := unvisRune(p)
 		if err != nil {
 			return "", fmt.Errorf("input: %s", err)
 		}
-		output += ch
+		output = append(output, ch...)
 	}
-	return output, nil
+	return string(output), nil
 }
 
 // Unvis takes a string formatted with the given Vis flags (though only the

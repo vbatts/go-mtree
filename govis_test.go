@@ -18,6 +18,7 @@
 package govis
 
 import (
+	"bytes"
 	"testing"
 )
 
@@ -34,6 +35,7 @@ func TestVisUnvis(t *testing.T) {
 		"hello world [ this string needs=enco ding! ]",
 		"even \n more encoding necessary\a\a ",
 		"\024 <-- some more weird characters --> 你好，世界",
+		"\\xff\\n double encoding is also great fun \\x",
 	} {
 		enc, err := Vis(test, DefaultVisFlags)
 		if err != nil {
@@ -49,4 +51,41 @@ func TestVisUnvis(t *testing.T) {
 			t.Errorf("roundtrip failed: unvis(vis(%q) = %q) = %q", test, enc, dec)
 		}
 	}
+}
+
+func TestByteStrings(t *testing.T) {
+	// It's important to make sure that we don't mess around with the layout of
+	// bytes when doing a round-trip. Otherwise we risk outputting visually
+	// identical but bit-stream non-identical strings (causing much confusion
+	// when trying to access such files).
+
+	for _, test := range [][]byte{
+		[]byte("This is a man in business suit levitating: \U0001f574"),
+		{0x7f, 0x17, 0x01, 0x33},
+		// TODO: Test arbitrary byte streams like the one below. Currently this
+		//       fails because Vis() is messing around with it (converting it
+		//       to a rune and spacing it out).
+		//{'\xef', '\xae', 'h', '\077', 'k'},
+	} {
+		testString := string(test)
+		enc, err := Vis(testString, DefaultVisFlags)
+		if err != nil {
+			t.Errorf("unexpected error doing vis(%q): %s", test, err)
+			continue
+		}
+		dec, err := Unvis(enc, DefaultVisFlags)
+		if err != nil {
+			t.Errorf("unexpected error doing unvis(%q): %s", enc, err)
+			continue
+		}
+		decBytes := []byte(dec)
+
+		if dec != testString {
+			t.Errorf("roundtrip failed [string comparison]: unvis(vis(%q) = %q) = %q", test, enc, dec)
+		}
+		if !bytes.Equal(decBytes, test) {
+			t.Errorf("roundtrip failed [byte comparison]: unvis(vis(%q) = %q) = %q", test, enc, dec)
+		}
+	}
+
 }
