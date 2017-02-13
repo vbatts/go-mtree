@@ -32,7 +32,6 @@ const (
 	VisNoSlash                         // VIS_NOSLASH: Inhibit printing '\'.
 	VisHTTPStyle                       // VIS_HTTPSTYLE: HTTP-style escape %xx.
 	VisGlob                            // VIS_GLOB: Encode glob(3) magics.
-	unvisEnd                           // UNVIS_END: Internal flag used to indicate end of parsing.
 
 	VisWhite VisFlag = (VisSpace | VisTab | VisNewline)
 )
