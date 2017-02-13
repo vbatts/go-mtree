@@ -20,7 +20,6 @@ package govis
 import (
 	"fmt"
 	"unicode"
-	"unicode/utf8"
 )
 
 func isunsafe(ch rune) bool {
@@ -31,7 +30,15 @@ func isglob(ch rune) bool {
 	return ch == '*' || ch == '?' || ch == '[' || ch == '#'
 }
 
+// ishttp is defined by RFC 1808.
 func ishttp(ch rune) bool {
+	// RFC1808 does not really consider characters outside of ASCII, so just to
+	// be safe always treat characters outside the ASCII character set as "not
+	// HTTP".
+	if ch > unicode.MaxASCII {
+		return false
+	}
+
 	return unicode.IsDigit(ch) || unicode.IsLetter(ch) ||
 		// Safe characters.
 		ch == '$' || ch == '-' || ch == '_' || ch == '.' || ch == '+' ||
@@ -40,54 +47,56 @@ func ishttp(ch rune) bool {
 		ch == ')' || ch == ','
 }
 
-func mapRuneBytes(ch rune, fn func(byte) string) string {
-	bytes := make([]byte, utf8.RuneLen(ch))
-	n := utf8.EncodeRune(bytes, ch)
-
-	mapped := ""
-	for i := 0; i < n; i++ {
-		mapped += fn(bytes[i])
-	}
-	return mapped
+func isgraph(ch rune) bool {
+	return unicode.IsGraphic(ch) && !unicode.IsSpace(ch) && ch <= unicode.MaxASCII
 }
 
-// vis converts a single rune into its encoding, ensuring that it is "safe"
-// (for some definition of safe). Note that some visual characters (such as
-// accented characters or similar things) can be made up of several runes -- in
-// order to maintain my sanity Vis() makes no attempt to handle such cases
-// specially.
-func vis(ch rune, flag VisFlag) (string, error) {
-	// XXX: Currently we are just allowing regular multi-byte characters such
-	//      as accents and so on to be passed through without encoding. Is this
-	//      really the best idea? In order to maintain compatibility with
-	//      vis(3) such that an older unvis(3) will do the right thing maybe we
-	//      should only output 7-bit ASCII? I'm not sure.
+// vis converts a single *byte* into its encoding. While Go supports the
+// concept of runes (and thus native utf-8 parsing), in order to make sure that
+// the bit-stream will be completely maintained through an Unvis(Vis(...))
+// round-trip. The downside is that Vis() will never output unicode -- but on
+// the plus side this is actually a benefit on the encoding side (it will
+// always work with the simple unvis(3) implementation). It also means that we
+// don't have to worry about different multi-byte encodings.
+func vis(b byte, flag VisFlag) (string, error) {
+	// Treat the single-byte character as a rune.
+	ch := rune(b)
 
+	// XXX: This is quite a horrible thing to support.
 	if flag&VisHTTPStyle == VisHTTPStyle {
-		// This is described in RFC 1808.
 		if !ishttp(ch) {
-			return mapRuneBytes(ch, func(b byte) string {
-				return fmt.Sprintf("%.2X", b)
-			}), nil
+			return "%" + fmt.Sprintf("%.2X", ch), nil
 		}
 	}
 
-	// Handle all "ordinary" characters which don't need to be encoded.
-	if !(flag&VisGlob == VisGlob && isglob(ch)) &&
-		((unicode.IsGraphic(ch) && !unicode.IsSpace(ch)) ||
-			(flag&VisSpace == 0 && ch == ' ') ||
-			(flag&VisTab == 0 && ch == '\t') ||
-			(flag&VisNewline == 0 && ch == '\n') ||
-			(flag&VisSafe == VisSafe && isunsafe(ch))) {
-		enc := string(ch)
+	// Figure out if the character doesn't need to be encoded. Effectively, we
+	// encode most "normal" (graphical) characters as themselves unless we have
+	// been specifically asked not to. Note though that we *ALWAYS* encode
+	// everything outside ASCII.
+	// TODO: Switch this to much more logical code.
+
+	if ch > unicode.MaxASCII {
+		/* ... */
+	} else if flag&VisGlob == VisGlob && isglob(ch) {
+		/* ... */
+	} else if isgraph(ch) ||
+		(flag&VisSpace != VisSpace && ch == ' ') ||
+		(flag&VisTab != VisTab && ch == '\t') ||
+		(flag&VisNewline != VisNewline && ch == '\n') ||
+		(flag&VisSafe != 0 && isunsafe(ch)) {
+
+		encoded := string(ch)
 		if ch == '\\' && flag&VisNoSlash == 0 {
-			enc += "\\"
+			encoded += "\\"
 		}
-		return enc, nil
+		return encoded, nil
 	}
 
+	// Try to use C-style escapes first.
 	if flag&VisCStyle == VisCStyle {
 		switch ch {
+		case ' ':
+			return "\\s", nil
 		case '\n':
 			return "\\n", nil
 		case '\r':
@@ -102,55 +111,61 @@ func vis(ch rune, flag VisFlag) (string, error) {
 			return "\\t", nil
 		case '\f':
 			return "\\f", nil
-		case 0:
-			// TODO: Handle isoctal properly.
+		case '\x00':
+			// Output octal just to be safe.
 			return "\\000", nil
 		}
 	}
 
-	// TODO: ch & 0177 is not implemented...
-	if flag&VisOctal == VisOctal || unicode.IsGraphic(ch) {
-		return mapRuneBytes(ch, func(b byte) string {
-			return fmt.Sprintf("\\%.3o", b)
-		}), nil
+	// For graphical characters we generate octal output (and also if it's
+	// being forced by the caller's flags). Also spaces should always be
+	// encoded as octal.
+	if flag&VisOctal == VisOctal || isgraph(ch) || ch&0x7f == ' ' {
+		// Always output three-character octal just to be safe.
+		return fmt.Sprintf("\\%.3o", ch), nil
 	}
 
-	return mapRuneBytes(ch, func(b byte) string {
-		enc := ""
-		if flag&VisNoSlash == 0 {
-			enc += "\\"
-		}
+	// Now we have to output meta or ctrl escapes. As far as I can tell, this
+	// is not actually defined by any standard -- so this logic is basically
+	// copied from the original vis(3) implementation. Hopefully nobody
+	// actually relies on this (octal and hex are better).
 
-		// This logic is stolen from cvis, I don't understand any of it.
-		if b&0200 != 0 {
-			b &= 0177
-			enc += "M"
-		}
-		if unicode.IsControl(rune(b)) {
-			enc += "^"
-			if b == 0177 {
-				enc += "?"
-			} else {
-				enc += string(b + '@')
-			}
+	encoded := ""
+	if flag&VisNoSlash == 0 {
+		encoded += "\\"
+	}
+
+	// Meta characters have 0x80 set, but are otherwise identical to control
+	// characters.
+	if b&0x80 != 0 {
+		b &= 0x7f
+		encoded += "M"
+	}
+
+	if unicode.IsControl(rune(b)) {
+		encoded += "^"
+		if b == 0x7f {
+			encoded += "?"
 		} else {
-			enc += fmt.Sprintf("-%s", b)
+			encoded += fmt.Sprintf("%c", b+'@')
 		}
+	} else {
+		encoded += fmt.Sprintf("-%c", b)
+	}
 
-		return enc
-	}), nil
+	return encoded, nil
 }
 
 // Vis encodes the provided string to a BSD-compatible encoding using BSD's
 // vis() flags. However, it will correctly handle multi-byte encoding (which is
 // not done properly by BSD's vis implementation).
 func Vis(src string, flag VisFlag) (string, error) {
-	if !utf8.ValidString(src) {
-		return "", fmt.Errorf("vis: input string is invalid utf8 literal")
+	if flag&visMask != flag {
+		return "", fmt.Errorf("vis: flag %q contains unknown or unsupported flags", flag)
 	}
 
 	output := ""
-	for _, ch := range src {
+	for _, ch := range []byte(src) {
 		encodedCh, err := vis(ch, flag)
 		if err != nil {
 			return "", err
