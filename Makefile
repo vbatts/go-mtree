@@ -4,10 +4,10 @@ BUILDPATH := github.com/vbatts/go-mtree/cmd/gomtree
 CWD := $(shell pwd)
 SOURCE_FILES := $(shell find . -type f -name "*.go")
 CLEAN_FILES := *~
-TAGS := cvis
+TAGS :=
 ARCHES := linux,386 linux,amd64 linux,arm linux,arm64 openbsd,amd64 windows,amd64 darwin,amd64
 
-default: build validation 
+default: build validation
 
 .PHONY: validation
 validation: .test .lint .vet .cli.test
