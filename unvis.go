@@ -74,7 +74,7 @@ func newParser(input string, flag VisFlag) *unvisParser {
 func unvisPlainRune(p *unvisParser) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
-		return nil, fmt.Errorf("plain rune: %s", ch)
+		return nil, fmt.Errorf("plain rune: %c", ch)
 	}
 	p.Next()
 
@@ -238,8 +238,6 @@ func unvisEscapeSequence(p *unvisParser) ([]byte, error) {
 	default:
 		return unvisEscapeCStyle(p)
 	}
-
-	return nil, fmt.Errorf("escape sequence: unsupported sequence: %q", ch)
 }
 
 func unvisRune(p *unvisParser) ([]byte, error) {

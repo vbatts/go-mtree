@@ -121,7 +121,7 @@ func TestVisChanged(t *testing.T) {
 			t.Errorf("unexpected error with %q: %s", test, err)
 		}
 		if enc == test {
-			t.Errorf("expected encoding of %q to be changed")
+			t.Errorf("expected encoding of %q to be changed", test)
 		}
 	}
 }
