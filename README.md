@@ -1,4 +1,5 @@
 ## `govis` ##
+[![Travis CI](https://travis-ci.org/cyphar/govis.svg?branch=master)](https://travis-ci.org/cyphar/govis)
 
 `govis` is a BSD-compatible `vis(3)` and `unvis(3)` encoding implementation
 that is unicode aware and written in Go. None of this code comes from the
