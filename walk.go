@@ -25,9 +25,10 @@ var ExcludeNonDirectories = func(path string, info os.FileInfo) bool {
 
 var defaultSetKeywords = []KeyVal{"type=file", "nlink=1", "flags=none", "mode=0664"}
 
-// Walk from root directory and assemble the DirectoryHierarchy. excludes
-// provided are used to skip paths. keywords are the set to collect from the
-// walked paths. The recommended default list is DefaultKeywords.
+// Walk from root directory and assemble the DirectoryHierarchy
+// * `excludes` provided are used to skip paths
+// * `keywords` are the set to collect from the walked paths. The recommended default list is DefaultKeywords.
+// * `fsEval` is the interface to use in evaluating files. If `nil`, then DefaultFsEval is used.
 func Walk(root string, excludes []ExcludeFunc, keywords []Keyword, fsEval FsEval) (*DirectoryHierarchy, error) {
 	if fsEval == nil {
 		fsEval = DefaultFsEval{}
