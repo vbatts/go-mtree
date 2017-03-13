@@ -1,5 +1,7 @@
 # go-mtree
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/vbatts/go-mtree)](https://goreportcard.com/report/github.com/vbatts/go-mtree)
+
 `mtree` is a filesystem hierarchy validation tooling and format.
 This is a library and simple cli tool for [mtree(8)][mtree(8)] support.
 
