@@ -16,12 +16,13 @@ import (
 
 var (
 	// Flags common with mtree(8)
-	flCreate        = flag.Bool("c", false, "create a directory hierarchy spec")
-	flFile          = flag.String("f", "", "directory hierarchy spec to validate")
-	flPath          = flag.String("p", "", "root path that the hierarchy spec is relative to")
-	flAddKeywords   = flag.String("K", "", "Add the specified (delimited by comma or space) keywords to the current set of keywords")
-	flUseKeywords   = flag.String("k", "", "Use the specified (delimited by comma or space) keywords as the current set of keywords")
-	flDirectoryOnly = flag.Bool("d", false, "Ignore everything except directory type files")
+	flCreate           = flag.Bool("c", false, "create a directory hierarchy spec")
+	flFile             = flag.String("f", "", "directory hierarchy spec to validate")
+	flPath             = flag.String("p", "", "root path that the hierarchy spec is relative to")
+	flAddKeywords      = flag.String("K", "", "Add the specified (delimited by comma or space) keywords to the current set of keywords")
+	flUseKeywords      = flag.String("k", "", "Use the specified (delimited by comma or space) keywords as the current set of keywords")
+	flDirectoryOnly    = flag.Bool("d", false, "Ignore everything except directory type files")
+	flUpdateAttributes = flag.Bool("u", false, "Modify the owner, group, permissions and xattrs of files, symbolic links and devices, to match the provided specification. This is not compatible with '-T'.")
 
 	// Flags unique to gomtree
 	flListKeywords     = flag.Bool("list-keywords", false, "List the keywords available")
@@ -208,6 +209,12 @@ func app() error {
 		excludes = append(excludes, mtree.ExcludeNonDirectories)
 	}
 
+	// -u
+	// Failing early here. Processing is done below.
+	if *flUpdateAttributes && *flTar != "" {
+		return fmt.Errorf("ERROR: -u can not be used with -T")
+	}
+
 	// -T <tar file>
 	if *flTar != "" {
 		var input io.Reader
@@ -240,6 +247,25 @@ func app() error {
 		if err != nil {
 			return err
 		}
+	}
+
+	// -u
+	if *flUpdateAttributes && stateDh != nil {
+		// -u
+		// this comes before the next case, intentionally.
+
+		// TODO brainstorm where to allow setting of xattrs. Maybe a new flag that allows a comma delimited list of keywords to update?
+		updateKeywords := []mtree.Keyword{"uid", "gid", "mode"}
+
+		result, err := mtree.Update(rootPath, stateDh, updateKeywords, nil)
+		if err != nil {
+			return err
+		}
+
+		if result != nil {
+			fmt.Printf("%#v\n", result)
+		}
+		return nil
 	}
 
 	// -c

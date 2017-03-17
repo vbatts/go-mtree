@@ -23,7 +23,7 @@ var ExcludeNonDirectories = func(path string, info os.FileInfo) bool {
 	return !info.IsDir()
 }
 
-var defaultSetKeywords = []KeyVal{"type=file", "nlink=1", "flags=none", "mode=0664"}
+var defaultSetKeyVals = []KeyVal{"type=file", "nlink=1", "flags=none", "mode=0664"}
 
 // Walk from root directory and assemble the DirectoryHierarchy
 // * `excludes` provided are used to skip paths
@@ -88,7 +88,7 @@ func Walk(root string, excludes []ExcludeFunc, keywords []Keyword, fsEval FsEval
 					Name:     "/set",
 					Type:     SpecialType,
 					Pos:      len(creator.DH.Entries),
-					Keywords: keyvalSelector(defaultSetKeywords, keywords),
+					Keywords: keyvalSelector(defaultSetKeyVals, keywords),
 				}
 				for _, keyword := range SetKeywords {
 					err := func() error {
@@ -161,7 +161,7 @@ func Walk(root string, excludes []ExcludeFunc, keywords []Keyword, fsEval FsEval
 						Name:     "/set",
 						Type:     SpecialType,
 						Pos:      len(creator.DH.Entries),
-						Keywords: keyvalSelector(append(defaultSetKeywords, klist...), keywords),
+						Keywords: keyvalSelector(append(defaultSetKeyVals, klist...), keywords),
 					}
 					creator.curSet = &e
 					creator.DH.Entries = append(creator.DH.Entries, e)
