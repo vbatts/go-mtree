@@ -13,9 +13,14 @@ import (
 )
 
 func TestXattr(t *testing.T) {
-	// a bit dirty to create/destory a directory in cwd, but often /tmp is
-	// mounted tmpfs and doesn't support xattrs
-	dir, err := ioutil.TempDir(".", "test.xattrs.")
+	testDir, present := os.LookupEnv("MTREE_TESTDIR")
+	if present == false {
+		// a bit dirty to create/destory a directory in cwd,
+		// but often /tmp is mounted tmpfs and doesn't support
+		// xattrs
+		testDir = "."
+	}
+	dir, err := ioutil.TempDir(testDir, "test.xattrs.")
 	if err != nil {
 		t.Fatal(err)
 	}
