@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -78,11 +79,16 @@ func TestTar(t *testing.T) {
 		t.Fatal("expected a DirectoryHierarchy struct, but got nil")
 	}
 
-	fh, err = os.Create("./testdata/test.mtree")
+	testDir, present := os.LookupEnv("MTREE_TESTDIR")
+	if present == false {
+		testDir = "."
+	}
+	testPath := filepath.Join(testDir, "test.mtree")
+	fh, err = os.Create(testPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove("./testdata/test.mtree")
+	defer os.Remove(testPath)
 
 	// put output of tar walk into test.mtree
 	_, err = tdh.WriteTo(fh)
@@ -92,7 +98,7 @@ func TestTar(t *testing.T) {
 	fh.Close()
 
 	// now simulate gomtree -T testdata/test.tar -f testdata/test.mtree
-	fh, err = os.Open("./testdata/test.mtree")
+	fh, err = os.Open(testPath)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,7 +10,11 @@ import (
 )
 
 func TestXattr(t *testing.T) {
-	fh, err := ioutil.TempFile(".", "xattr.")
+	testDir, present := os.LookupEnv("MTREE_TESTDIR")
+	if present == false {
+		testDir = "."
+	}
+	fh, err := ioutil.TempFile(testDir, "xattr.")
 	if err != nil {
 		t.Fatal(err)
 	}
