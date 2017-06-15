@@ -34,6 +34,7 @@ var (
 		"gid":             gidKeywordFunc,                                      // The file group as a numeric value
 		"nlink":           nlinkKeywordFunc,                                    // The number of hard links the file is expected to have
 		"uname":           unameKeywordFunc,                                    // The file owner as a symbolic name
+		"gname":           gnameKeywordFunc,                                    // The file group as a symbolic name
 		"mode":            modeKeywordFunc,                                     // The current file's permissions as a numeric (octal) or symbolic value
 		"cksum":           cksumKeywordFunc,                                    // The checksum of the file using the default algorithm specified by the cksum(1) utility
 		"md5":             hasherKeywordFunc("md5digest", md5.New),             // The MD5 message digest of the file

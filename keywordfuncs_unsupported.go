@@ -20,6 +20,12 @@ var (
 		}
 		return emptyKV, nil
 	}
+	gnameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+		if hdr, ok := info.Sys().(*tar.Header); ok {
+			return KeyVal(fmt.Sprintf("gname=%s", hdr.Gname)), nil
+		}
+		return emptyKV, nil
+	}
 	uidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
 			return KeyVal(fmt.Sprintf("uid=%d", hdr.Uid)), nil
