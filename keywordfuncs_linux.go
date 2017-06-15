@@ -40,7 +40,7 @@ var (
 		}
 
 		stat := info.Sys().(*syscall.Stat_t)
-		g, err := user.LookupGroupId(fmt.Sprintf("%d", stat.Gid))
+		g, err := lookupGroupID(fmt.Sprintf("%d", stat.Gid))
 		if err != nil {
 			return emptyKV, err
 		}
