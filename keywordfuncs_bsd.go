@@ -29,6 +29,18 @@ var (
 		}
 		return KeyVal(fmt.Sprintf("uname=%s", u.Username)), nil
 	}
+	gnameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+		if hdr, ok := info.Sys().(*tar.Header); ok {
+			return KeyVal(fmt.Sprintf("gname=%s", hdr.Gname)), nil
+		}
+
+		stat := info.Sys().(*syscall.Stat_t)
+		g, err := user.LookupGroupId(fmt.Sprintf("%d", stat.Gid))
+		if err != nil {
+			return emptyKV, err
+		}
+		return KeyVal(fmt.Sprintf("gname=%s", g.Name)), nil
+	}
 	uidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
 			return KeyVal(fmt.Sprintf("uid=%d", hdr.Uid)), nil
