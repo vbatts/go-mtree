@@ -242,7 +242,6 @@ var (
 	// BsdKeywords is the set of keywords that is only in the upstream FreeBSD mtree
 	BsdKeywords = []Keyword{
 		"cksum",
-		"device",
 		"flags", // this one is really mostly BSD specific ...
 		"ignore",
 		"gid",

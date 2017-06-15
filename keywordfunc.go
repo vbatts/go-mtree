@@ -162,7 +162,7 @@ var (
 			if info.Mode()&os.ModeCharDevice != 0 {
 				return "type=char", nil
 			}
-			return "type=device", nil
+			return "type=block", nil
 		}
 		return emptyKV, nil
 	}
