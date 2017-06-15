@@ -97,8 +97,9 @@ func TestUpdate(t *testing.T) {
 		buf, err := json.MarshalIndent(res, "", "  ")
 		if err != nil {
 			t.Errorf("%#v", res)
+		} else {
+			t.Error(string(buf))
 		}
-		t.Error(string(buf))
 	}
 
 }

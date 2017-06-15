@@ -21,7 +21,7 @@ import (
 // io.Reader `r` is to the file stream for the file payload. While this
 // function takes an io.Reader, the caller needs to reset it to the beginning
 // for each new KeywordFunc
-type KeywordFunc func(path string, info os.FileInfo, r io.Reader) (KeyVal, error)
+type KeywordFunc func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error)
 
 var (
 	// KeywordFuncs is the map of all keywords (and the functions to produce them)
@@ -67,7 +67,7 @@ var (
 	}
 )
 var (
-	modeKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	modeKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		permissions := info.Mode().Perm()
 		if os.ModeSetuid&info.Mode() > 0 {
 			permissions |= (1 << 11)
@@ -78,93 +78,93 @@ var (
 		if os.ModeSticky&info.Mode() > 0 {
 			permissions |= (1 << 9)
 		}
-		return KeyVal(fmt.Sprintf("mode=%#o", permissions)), nil
+		return []KeyVal{KeyVal(fmt.Sprintf("mode=%#o", permissions))}, nil
 	}
-	sizeKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	sizeKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if sys, ok := info.Sys().(*tar.Header); ok {
 			if sys.Typeflag == tar.TypeSymlink {
-				return KeyVal(fmt.Sprintf("size=%d", len(sys.Linkname))), nil
+				return []KeyVal{KeyVal(fmt.Sprintf("size=%d", len(sys.Linkname)))}, nil
 			}
 		}
-		return KeyVal(fmt.Sprintf("size=%d", info.Size())), nil
+		return []KeyVal{KeyVal(fmt.Sprintf("size=%d", info.Size()))}, nil
 	}
-	cksumKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	cksumKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if !info.Mode().IsRegular() {
-			return emptyKV, nil
+			return nil, nil
 		}
 		sum, _, err := cksum(r)
 		if err != nil {
-			return emptyKV, err
+			return nil, err
 		}
-		return KeyVal(fmt.Sprintf("cksum=%d", sum)), nil
+		return []KeyVal{KeyVal(fmt.Sprintf("cksum=%d", sum))}, nil
 	}
 	hasherKeywordFunc = func(name string, newHash func() hash.Hash) KeywordFunc {
-		return func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+		return func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 			if !info.Mode().IsRegular() {
-				return emptyKV, nil
+				return nil, nil
 			}
 			h := newHash()
 			if _, err := io.Copy(h, r); err != nil {
-				return emptyKV, err
+				return nil, err
 			}
-			return KeyVal(fmt.Sprintf("%s=%x", KeywordSynonym(name), h.Sum(nil))), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("%s=%x", KeywordSynonym(name), h.Sum(nil)))}, nil
 		}
 	}
-	tartimeKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
-		return KeyVal(fmt.Sprintf("tar_time=%d.%9.9d", info.ModTime().Unix(), 0)), nil
+	tartimeKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
+		return []KeyVal{KeyVal(fmt.Sprintf("tar_time=%d.%9.9d", info.ModTime().Unix(), 0))}, nil
 	}
-	timeKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	timeKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		tSec := info.ModTime().Unix()
 		tNano := info.ModTime().Nanosecond()
-		return KeyVal(fmt.Sprintf("time=%d.%9.9d", tSec, tNano)), nil
+		return []KeyVal{KeyVal(fmt.Sprintf("time=%d.%9.9d", tSec, tNano))}, nil
 	}
-	linkKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	linkKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if sys, ok := info.Sys().(*tar.Header); ok {
 			if sys.Linkname != "" {
 				linkname, err := govis.Vis(sys.Linkname, DefaultVisFlags)
 				if err != nil {
-					return emptyKV, err
+					return nil, nil
 				}
-				return KeyVal(fmt.Sprintf("link=%s", linkname)), nil
+				return []KeyVal{KeyVal(fmt.Sprintf("link=%s", linkname))}, nil
 			}
-			return emptyKV, nil
+			return nil, nil
 		}
 
 		if info.Mode()&os.ModeSymlink != 0 {
 			str, err := os.Readlink(path)
 			if err != nil {
-				return emptyKV, err
+				return nil, nil
 			}
 			linkname, err := govis.Vis(str, DefaultVisFlags)
 			if err != nil {
-				return emptyKV, err
+				return nil, nil
 			}
-			return KeyVal(fmt.Sprintf("link=%s", linkname)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("link=%s", linkname))}, nil
 		}
-		return emptyKV, nil
+		return nil, nil
 	}
-	typeKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	typeKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if info.Mode().IsDir() {
-			return "type=dir", nil
+			return []KeyVal{"type=dir"}, nil
 		}
 		if info.Mode().IsRegular() {
-			return "type=file", nil
+			return []KeyVal{"type=file"}, nil
 		}
 		if info.Mode()&os.ModeSocket != 0 {
-			return "type=socket", nil
+			return []KeyVal{"type=socket"}, nil
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			return "type=link", nil
+			return []KeyVal{"type=link"}, nil
 		}
 		if info.Mode()&os.ModeNamedPipe != 0 {
-			return "type=fifo", nil
+			return []KeyVal{"type=fifo"}, nil
 		}
 		if info.Mode()&os.ModeDevice != 0 {
 			if info.Mode()&os.ModeCharDevice != 0 {
-				return "type=char", nil
+				return []KeyVal{"type=char"}, nil
 			}
-			return "type=block", nil
+			return []KeyVal{"type=block"}, nil
 		}
-		return emptyKV, nil
+		return nil, nil
 	}
 )

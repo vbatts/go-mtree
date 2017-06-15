@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"strings"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/vbatts/go-mtree"
 )
 
@@ -37,7 +37,7 @@ var (
 func main() {
 	// so that defers cleanly exec
 	if err := app(); err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 }
 
@@ -46,6 +46,7 @@ func app() error {
 
 	if *flDebug {
 		os.Setenv("DEBUG", "1")
+		logrus.SetLevel(logrus.DebugLevel)
 	}
 
 	if *flVersion {

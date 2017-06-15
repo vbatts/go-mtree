@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"os/user"
-	"strings"
 	"syscall"
 
 	"github.com/vbatts/go-mtree/pkg/govis"
@@ -18,91 +17,91 @@ import (
 
 var (
 	// this is bsd specific https://www.freebsd.org/cgi/man.cgi?query=chflags&sektion=2
-	flagsKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
-		return emptyKV, nil
+	flagsKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
+		return nil, nil
 	}
 
-	unameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	unameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
-			return KeyVal(fmt.Sprintf("uname=%s", hdr.Uname)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("uname=%s", hdr.Uname))}, nil
 		}
 
 		stat := info.Sys().(*syscall.Stat_t)
 		u, err := user.LookupId(fmt.Sprintf("%d", stat.Uid))
 		if err != nil {
-			return emptyKV, err
+			return nil, nil
 		}
-		return KeyVal(fmt.Sprintf("uname=%s", u.Username)), nil
+		return []KeyVal{KeyVal(fmt.Sprintf("uname=%s", u.Username))}, nil
 	}
-	gnameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	gnameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
-			return KeyVal(fmt.Sprintf("gname=%s", hdr.Gname)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("gname=%s", hdr.Gname))}, nil
 		}
 
 		stat := info.Sys().(*syscall.Stat_t)
 		g, err := lookupGroupID(fmt.Sprintf("%d", stat.Gid))
 		if err != nil {
-			return emptyKV, err
+			return nil, nil
 		}
-		return KeyVal(fmt.Sprintf("gname=%s", g.Name)), nil
+		return []KeyVal{KeyVal(fmt.Sprintf("gname=%s", g.Name))}, nil
 	}
-	uidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	uidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
-			return KeyVal(fmt.Sprintf("uid=%d", hdr.Uid)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("uid=%d", hdr.Uid))}, nil
 		}
 		stat := info.Sys().(*syscall.Stat_t)
-		return KeyVal(fmt.Sprintf("uid=%d", stat.Uid)), nil
+		return []KeyVal{KeyVal(fmt.Sprintf("uid=%d", stat.Uid))}, nil
 	}
-	gidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	gidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
-			return KeyVal(fmt.Sprintf("gid=%d", hdr.Gid)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("gid=%d", hdr.Gid))}, nil
 		}
 		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			return KeyVal(fmt.Sprintf("gid=%d", stat.Gid)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("gid=%d", stat.Gid))}, nil
 		}
-		return emptyKV, nil
+		return nil, nil
 	}
-	nlinkKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	nlinkKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			return KeyVal(fmt.Sprintf("nlink=%d", stat.Nlink)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("nlink=%d", stat.Nlink))}, nil
 		}
-		return emptyKV, nil
+		return nil, nil
 	}
-	xattrKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	xattrKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
 			if len(hdr.Xattrs) == 0 {
-				return emptyKV, nil
+				return nil, nil
 			}
 			klist := []KeyVal{}
 			for k, v := range hdr.Xattrs {
 				encKey, err := govis.Vis(k, DefaultVisFlags)
 				if err != nil {
-					return emptyKV, err
+					return nil, nil
 				}
 				klist = append(klist, KeyVal(fmt.Sprintf("xattr.%s=%s", encKey, base64.StdEncoding.EncodeToString([]byte(v)))))
 			}
-			return KeyVal(strings.Join(KeyValToString(klist), " ")), nil
+			return klist, nil
 		}
 		if !info.Mode().IsRegular() && !info.Mode().IsDir() {
-			return emptyKV, nil
+			return nil, nil
 		}
 
 		xlist, err := xattr.List(path)
 		if err != nil {
-			return emptyKV, err
+			return nil, nil
 		}
 		klist := make([]KeyVal, len(xlist))
 		for i := range xlist {
 			data, err := xattr.Get(path, xlist[i])
 			if err != nil {
-				return emptyKV, err
+				return nil, nil
 			}
 			encKey, err := govis.Vis(xlist[i], DefaultVisFlags)
 			if err != nil {
-				return emptyKV, err
+				return nil, nil
 			}
 			klist[i] = KeyVal(fmt.Sprintf("xattr.%s=%s", encKey, base64.StdEncoding.EncodeToString(data)))
 		}
-		return KeyVal(strings.Join(KeyValToString(klist), " ")), nil
+		return klist, nil
 	}
 )

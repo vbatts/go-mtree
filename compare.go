@@ -197,7 +197,7 @@ func compareEntry(oldEntry, newEntry Entry) ([]KeyDelta, error) {
 	for _, kv := range oldKeys {
 		key := kv.Keyword()
 		// only add this diff if the new keys has this keyword
-		if key != "tar_time" && key != "time" && key != "xattr" && HasKeyword(newKeys, key) == emptyKV {
+		if key != "tar_time" && key != "time" && key != "xattr" && len(HasKeyword(newKeys, key)) == 0 {
 			continue
 		}
 
@@ -216,7 +216,7 @@ func compareEntry(oldEntry, newEntry Entry) ([]KeyDelta, error) {
 	for _, kv := range newKeys {
 		key := kv.Keyword()
 		// only add this diff if the old keys has this keyword
-		if key != "tar_time" && key != "time" && key != "xattr" && HasKeyword(oldKeys, key) == emptyKV {
+		if key != "tar_time" && key != "time" && key != "xattr" && len(HasKeyword(oldKeys, key)) == 0 {
 			continue
 		}
 

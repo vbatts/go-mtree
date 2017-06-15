@@ -12,58 +12,58 @@ import (
 )
 
 var (
-	flagsKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	flagsKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		// ideally this will pull in from here https://www.freebsd.org/cgi/man.cgi?query=chflags&sektion=2
-		return emptyKV, nil
+		return nil, nil
 	}
 
-	unameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	unameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
-			return KeyVal(fmt.Sprintf("uname=%s", hdr.Uname)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("uname=%s", hdr.Uname))}, nil
 		}
 
 		stat := info.Sys().(*syscall.Stat_t)
 		u, err := user.LookupId(fmt.Sprintf("%d", stat.Uid))
 		if err != nil {
-			return emptyKV, err
+			return nil, err
 		}
-		return KeyVal(fmt.Sprintf("uname=%s", u.Username)), nil
+		return []KeyVal{KeyVal(fmt.Sprintf("uname=%s", u.Username))}, nil
 	}
-	gnameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	gnameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
-			return KeyVal(fmt.Sprintf("gname=%s", hdr.Gname)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("gname=%s", hdr.Gname))}, nil
 		}
 
 		stat := info.Sys().(*syscall.Stat_t)
 		g, err := lookupGroupID(fmt.Sprintf("%d", stat.Gid))
 		if err != nil {
-			return emptyKV, err
+			return nil, err
 		}
-		return KeyVal(fmt.Sprintf("gname=%s", g.Name)), nil
+		return []KeyVal{KeyVal(fmt.Sprintf("gname=%s", g.Name))}, nil
 	}
-	uidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	uidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
-			return KeyVal(fmt.Sprintf("uid=%d", hdr.Uid)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("uid=%d", hdr.Uid))}, nil
 		}
 		stat := info.Sys().(*syscall.Stat_t)
-		return KeyVal(fmt.Sprintf("uid=%d", stat.Uid)), nil
+		return []KeyVal{KeyVal(fmt.Sprintf("uid=%d", stat.Uid))}, nil
 	}
-	gidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	gidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
-			return KeyVal(fmt.Sprintf("gid=%d", hdr.Gid)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("gid=%d", hdr.Gid))}, nil
 		}
 		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			return KeyVal(fmt.Sprintf("gid=%d", stat.Gid)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("gid=%d", stat.Gid))}, nil
 		}
-		return emptyKV, nil
+		return nil, nil
 	}
-	nlinkKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	nlinkKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			return KeyVal(fmt.Sprintf("nlink=%d", stat.Nlink)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("nlink=%d", stat.Nlink))}, nil
 		}
-		return emptyKV, nil
+		return nil, nil
 	}
-	xattrKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
-		return emptyKV, nil
+	xattrKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
+		return nil, nil
 	}
 )
