@@ -1,6 +1,7 @@
 package mtree
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -8,7 +9,7 @@ import (
 	"time"
 )
 
-var mockTime = time.Unix(1337888823, 88288518233)
+var mockTime = time.Unix(1337888823, 0)
 
 // Here be some dodgy testing. In particular, we have to mess around with some
 // of the FsEval functions. In particular, we change all of the FileInfos to a
@@ -155,6 +156,11 @@ func TestCheckFsEval(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(res) > 0 {
-		t.Errorf("%#v", res)
+		buf, err := json.MarshalIndent(res, "", "  ")
+		if err != nil {
+			t.Errorf("%#v", res)
+		} else {
+			t.Errorf("%s", buf)
+		}
 	}
 }
