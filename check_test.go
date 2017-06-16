@@ -58,8 +58,8 @@ func TestCheckKeywords(t *testing.T) {
 	}
 
 	// Touch a file, so the mtime changes.
-	now := time.Now()
-	if err := os.Chtimes(tmpfn, now, now); err != nil {
+	newtime := time.Date(2006, time.February, 1, 3, 4, 5, 0, time.UTC)
+	if err := os.Chtimes(tmpfn, newtime, newtime); err != nil {
 		t.Fatal(err)
 	}
 
