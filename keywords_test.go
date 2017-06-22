@@ -7,6 +7,42 @@ import (
 	"time"
 )
 
+func TestKeyValRoundtrip(t *testing.T) {
+  kv := KeyVal("xattr.security.selinux=dW5jb25maW5lZF91Om9iamVjdF9yOnVzZXJfaG9tZV90OnMwAA==")
+  expected := "xattr"
+  got :=  string(kv.Keyword())
+  if got != expected {
+    t.Errorf("expected %q; got %q", expected, got)
+  }
+
+  expected = "security.selinux"
+  got = kv.KeywordSuffix()
+  if got != expected {
+    t.Errorf("expected %q; got %q", expected, got)
+  }
+
+  expected = "dW5jb25maW5lZF91Om9iamVjdF9yOnVzZXJfaG9tZV90OnMwAA=="
+  got = kv.Value()
+  if got != expected {
+    t.Errorf("expected %q; got %q", expected, got)
+  }
+
+
+  expected = "xattr.security.selinux=farts"
+  got = string(kv.NewValue("farts"))
+  if got != expected {
+    t.Errorf("expected %q; got %q", expected, got)
+  }
+
+  expected = "xattr.security.selinux=farts"
+  kv1 := KeyVal(got)
+  kv2 := kv.NewValue("farts")
+  if !kv2.Equal(kv1) {
+    t.Errorf("expected equality of %q and %q", kv1, kv2)
+  }
+
+}
+
 type fakeFileInfo struct {
 	mtime time.Time
 }

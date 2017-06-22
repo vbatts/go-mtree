@@ -299,7 +299,7 @@ func compareEntry(oldEntry, newEntry Entry) ([]KeyDelta, error) {
 
 		// Modified
 		default:
-			if !KeyValEqual(*diff.Old, *diff.New) {
+			if !diff.Old.Equal(*diff.New) {
 				results = append(results, KeyDelta{
 					diff: Modified,
 					name: name,
