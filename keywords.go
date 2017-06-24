@@ -121,18 +121,21 @@ func (kv KeyVal) Value() string {
 	return strings.SplitN(strings.TrimSpace(string(kv)), "=", 2)[1]
 }
 
-// ChangeValue changes the value of a KeyVal
-func (kv KeyVal) ChangeValue(newval string) string {
-	return fmt.Sprintf("%s=%s", kv.Keyword(), newval)
+// NewValue returns a new KeyVal with the newval
+func (kv KeyVal) NewValue(newval string) KeyVal {
+	if suff := kv.KeywordSuffix(); suff != "" {
+		return KeyVal(fmt.Sprintf("%s.%s=%s", kv.Keyword(), suff, newval))
+	}
+	return KeyVal(fmt.Sprintf("%s=%s", kv.Keyword(), newval))
 }
 
-// KeyValEqual returns whether two KeyVal are equivalent. This takes
+// Equal returns whether two KeyVal are equivalent. This takes
 // care of certain odd cases such as tar_mtime, and should be used over
 // using == comparisons directly unless you really know what you're
 // doing.
-func KeyValEqual(a, b KeyVal) bool {
+func (kv KeyVal) Equal(b KeyVal) bool {
 	// TODO: Implement handling of tar_mtime.
-	return a.Keyword() == b.Keyword() && a.Value() == b.Value()
+	return kv.Keyword() == b.Keyword() && kv.KeywordSuffix() == b.KeywordSuffix() && kv.Value() == b.Value()
 }
 
 // keyvalSelector takes an array of KeyVal ("keyword=value") and filters out that only the set of keywords
