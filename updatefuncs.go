@@ -13,7 +13,7 @@ import (
 // UpdateKeywordFunc is the signature for a function that will restore a file's
 // attributes. Where path is relative path to the file, and value to be
 // restored to.
-type UpdateKeywordFunc func(keyword Keyword, path string, value string) (os.FileInfo, error)
+type UpdateKeywordFunc func(path string, kv KeyVal) (os.FileInfo, error)
 
 // UpdateKeywordFuncs is the registered list of functions to update file attributes.
 // Keyed by the keyword as it would show up in the manifest
@@ -26,8 +26,8 @@ var UpdateKeywordFuncs = map[Keyword]UpdateKeywordFunc{
 	"xattr":    xattrUpdateKeywordFunc,
 }
 
-func uidUpdateKeywordFunc(keyword Keyword, path, value string) (os.FileInfo, error) {
-	uid, err := strconv.Atoi(value)
+func uidUpdateKeywordFunc(path string, kv KeyVal) (os.FileInfo, error) {
+	uid, err := strconv.Atoi(kv.Value())
 	if err != nil {
 		return nil, err
 	}
@@ -37,8 +37,8 @@ func uidUpdateKeywordFunc(keyword Keyword, path, value string) (os.FileInfo, err
 	return os.Lstat(path)
 }
 
-func gidUpdateKeywordFunc(keyword Keyword, path, value string) (os.FileInfo, error) {
-	gid, err := strconv.Atoi(value)
+func gidUpdateKeywordFunc(path string, kv KeyVal) (os.FileInfo, error) {
+	gid, err := strconv.Atoi(kv.Value())
 	if err != nil {
 		return nil, err
 	}
@@ -48,12 +48,12 @@ func gidUpdateKeywordFunc(keyword Keyword, path, value string) (os.FileInfo, err
 	return os.Lstat(path)
 }
 
-func modeUpdateKeywordFunc(keyword Keyword, path, value string) (os.FileInfo, error) {
-	vmode, err := strconv.ParseInt(value, 8, 32)
+func modeUpdateKeywordFunc(path string, kv KeyVal) (os.FileInfo, error) {
+	vmode, err := strconv.ParseInt(kv.Value(), 8, 32)
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("path: %q, value: %q, vmode: %o", path, value, vmode)
+	logrus.Debugf("path: %q, kv.Value(): %q, vmode: %o", path, kv.Value(), vmode)
 	if err := os.Chmod(path, os.FileMode(vmode)); err != nil {
 		return nil, err
 	}
@@ -63,13 +63,13 @@ func modeUpdateKeywordFunc(keyword Keyword, path, value string) (os.FileInfo, er
 // since tar_time will only be second level precision, then when restoring the
 // filepath from a tar_time, then compare the seconds first and only Chtimes if
 // the seconds value is different.
-func tartimeUpdateKeywordFunc(keyword Keyword, path, value string) (os.FileInfo, error) {
+func tartimeUpdateKeywordFunc(path string, kv KeyVal) (os.FileInfo, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return nil, err
 	}
 
-	v := strings.SplitN(value, ".", 2)
+	v := strings.SplitN(kv.Value(), ".", 2)
 	if len(v) != 2 {
 		return nil, fmt.Errorf("expected a number like 1469104727.000000000")
 	}
@@ -92,8 +92,8 @@ func tartimeUpdateKeywordFunc(keyword Keyword, path, value string) (os.FileInfo,
 }
 
 // this is nano second precision
-func timeUpdateKeywordFunc(keyword Keyword, path, value string) (os.FileInfo, error) {
-	v := strings.SplitN(value, ".", 2)
+func timeUpdateKeywordFunc(path string, kv KeyVal) (os.FileInfo, error) {
+	v := strings.SplitN(kv.Value(), ".", 2)
 	if len(v) != 2 {
 		return nil, fmt.Errorf("expected a number like 1469104727.871937272")
 	}

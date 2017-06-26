@@ -4,6 +4,6 @@ package mtree
 
 import "os"
 
-func xattrUpdateKeywordFunc(keyword Keyword, path, value string) (os.FileInfo, error) {
+func xattrUpdateKeywordFunc(path string, kv KeyVal) (os.FileInfo, error) {
 	return os.Lstat(path)
 }
