@@ -13,7 +13,29 @@ const DefaultVisFlags govis.VisFlag = govis.VisWhite | govis.VisOctal | govis.Vi
 
 // Keyword is the string name of a keyword, with some convenience functions for
 // determining whether it is a default or bsd standard keyword.
+// It first portion before the "="
 type Keyword string
+
+// Prefix is the portion of the keyword before a first "." (if present).
+//
+// Primarly for the xattr use-case, where the keyword `xattr.security.selinux` would have a Suffix of `security.selinux`.
+func (k Keyword) Prefix() Keyword {
+	if strings.Contains(string(k), ".") {
+		return Keyword(strings.SplitN(string(k), ".", 2)[0])
+	}
+	return k
+}
+
+// Suffix is the portion of the keyword after a first ".".
+// This is an option feature.
+//
+// Primarly for the xattr use-case, where the keyword `xattr.security.selinux` would have a Suffix of `security.selinux`.
+func (k Keyword) Suffix() string {
+	if strings.Contains(string(k), ".") {
+		return strings.SplitN(string(k), ".", 2)[1]
+	}
+	return string(k)
+}
 
 // Default returns whether this keyword is in the default set of keywords
 func (k Keyword) Default() bool {
@@ -93,24 +115,7 @@ func (kv KeyVal) Keyword() Keyword {
 	if !strings.Contains(string(kv), "=") {
 		return Keyword("")
 	}
-	chunks := strings.SplitN(strings.TrimSpace(string(kv)), "=", 2)[0]
-	if !strings.Contains(chunks, ".") {
-		return Keyword(chunks)
-	}
-	return Keyword(strings.SplitN(chunks, ".", 2)[0])
-}
-
-// KeywordSuffix is really only used for xattr, as the keyword is a prefix to
-// the xattr "namespace.key"
-func (kv KeyVal) KeywordSuffix() string {
-	if !strings.Contains(string(kv), "=") {
-		return ""
-	}
-	chunks := strings.SplitN(strings.TrimSpace(string(kv)), "=", 2)[0]
-	if !strings.Contains(chunks, ".") {
-		return ""
-	}
-	return strings.SplitN(chunks, ".", 2)[1]
+	return Keyword(strings.SplitN(strings.TrimSpace(string(kv)), "=", 2)[0])
 }
 
 // Value is the data/value portion of "keyword=value"
@@ -123,9 +128,6 @@ func (kv KeyVal) Value() string {
 
 // NewValue returns a new KeyVal with the newval
 func (kv KeyVal) NewValue(newval string) KeyVal {
-	if suff := kv.KeywordSuffix(); suff != "" {
-		return KeyVal(fmt.Sprintf("%s.%s=%s", kv.Keyword(), suff, newval))
-	}
 	return KeyVal(fmt.Sprintf("%s=%s", kv.Keyword(), newval))
 }
 
@@ -135,14 +137,23 @@ func (kv KeyVal) NewValue(newval string) KeyVal {
 // doing.
 func (kv KeyVal) Equal(b KeyVal) bool {
 	// TODO: Implement handling of tar_mtime.
-	return kv.Keyword() == b.Keyword() && kv.KeywordSuffix() == b.KeywordSuffix() && kv.Value() == b.Value()
+	return kv.Keyword() == b.Keyword() && kv.Value() == b.Value()
 }
 
-// keyvalSelector takes an array of KeyVal ("keyword=value") and filters out that only the set of keywords
+func keywordPrefixes(kvset []Keyword) []Keyword {
+	kvs := []Keyword{}
+	for _, kv := range kvset {
+		kvs = append(kvs, kv.Prefix())
+	}
+	return kvs
+}
+
+// keyvalSelector takes an array of KeyVal ("keyword=value") and filters out
+// that only the set of keywords
 func keyvalSelector(keyval []KeyVal, keyset []Keyword) []KeyVal {
 	retList := []KeyVal{}
 	for _, kv := range keyval {
-		if InKeywordSlice(kv.Keyword(), keyset) {
+		if InKeywordSlice(kv.Keyword().Prefix(), keywordPrefixes(keyset)) {
 			retList = append(retList, kv)
 		}
 	}
@@ -171,22 +182,22 @@ func keyValCopy(set []KeyVal) []KeyVal {
 
 // Has the "keyword" present in the list of KeyVal, and returns the
 // corresponding KeyVal, else an empty string.
-func Has(keyvals []KeyVal, keyword string) KeyVal {
+func Has(keyvals []KeyVal, keyword string) []KeyVal {
 	return HasKeyword(keyvals, Keyword(keyword))
 }
 
 // HasKeyword the "keyword" present in the list of KeyVal, and returns the
 // corresponding KeyVal, else an empty string.
-func HasKeyword(keyvals []KeyVal, keyword Keyword) KeyVal {
+// This match is done on the Prefix of the keyword only.
+func HasKeyword(keyvals []KeyVal, keyword Keyword) []KeyVal {
+	kvs := []KeyVal{}
 	for i := range keyvals {
-		if keyvals[i].Keyword() == keyword {
-			return keyvals[i]
+		if keyvals[i].Keyword().Prefix() == keyword.Prefix() {
+			kvs = append(kvs, keyvals[i])
 		}
 	}
-	return emptyKV
+	return kvs
 }
-
-var emptyKV = KeyVal("")
 
 // MergeSet takes the current setKeyVals, and then applies the entryKeyVals
 // such that the entry's values win. The union is returned.
@@ -203,8 +214,11 @@ func MergeKeyValSet(setKeyVals, entryKeyVals []KeyVal) []KeyVal {
 	seenKeywords := []Keyword{}
 	for i := range retList {
 		word := retList[i].Keyword()
-		if ekv := HasKeyword(entryKeyVals, word); ekv != emptyKV {
-			retList[i] = ekv
+		for _, kv := range HasKeyword(entryKeyVals, word) {
+			// match on the keyword prefix and suffix here
+			if kv.Keyword() == word {
+				retList[i] = kv
+			}
 		}
 		seenKeywords = append(seenKeywords, word)
 	}

@@ -11,37 +11,37 @@ import (
 
 var (
 	// this is bsd specific https://www.freebsd.org/cgi/man.cgi?query=chflags&sektion=2
-	flagsKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
-		return emptyKV, nil
+	flagsKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
+		return nil, nil
 	}
-	unameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	unameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
-			return KeyVal(fmt.Sprintf("uname=%s", hdr.Uname)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("uname=%s", hdr.Uname))}, nil
 		}
-		return emptyKV, nil
+		return nil, nil
 	}
-	gnameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	gnameKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
-			return KeyVal(fmt.Sprintf("gname=%s", hdr.Gname)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("gname=%s", hdr.Gname))}, nil
 		}
-		return emptyKV, nil
+		return nil, nil
 	}
-	uidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	uidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
-			return KeyVal(fmt.Sprintf("uid=%d", hdr.Uid)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("uid=%d", hdr.Uid))}, nil
 		}
-		return emptyKV, nil
+		return nil, nil
 	}
-	gidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
+	gidKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
 		if hdr, ok := info.Sys().(*tar.Header); ok {
-			return KeyVal(fmt.Sprintf("gid=%d", hdr.Gid)), nil
+			return []KeyVal{KeyVal(fmt.Sprintf("gid=%d", hdr.Gid))}, nil
 		}
-		return emptyKV, nil
+		return nil, nil
 	}
-	nlinkKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
-		return emptyKV, nil
+	nlinkKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
+		return nil, nil
 	}
-	xattrKeywordFunc = func(path string, info os.FileInfo, r io.Reader) (KeyVal, error) {
-		return emptyKV, nil
+	xattrKeywordFunc = func(path string, info os.FileInfo, r io.Reader) ([]KeyVal, error) {
+		return nil, nil
 	}
 )

@@ -8,38 +8,43 @@ import (
 )
 
 func TestKeyValRoundtrip(t *testing.T) {
-  kv := KeyVal("xattr.security.selinux=dW5jb25maW5lZF91Om9iamVjdF9yOnVzZXJfaG9tZV90OnMwAA==")
-  expected := "xattr"
-  got :=  string(kv.Keyword())
-  if got != expected {
-    t.Errorf("expected %q; got %q", expected, got)
-  }
+	kv := KeyVal("xattr.security.selinux=dW5jb25maW5lZF91Om9iamVjdF9yOnVzZXJfaG9tZV90OnMwAA==")
+	expected := "xattr.security.selinux"
+	got := string(kv.Keyword())
+	if got != expected {
+		t.Errorf("expected %q; got %q", expected, got)
+	}
 
-  expected = "security.selinux"
-  got = kv.KeywordSuffix()
-  if got != expected {
-    t.Errorf("expected %q; got %q", expected, got)
-  }
+	expected = "xattr"
+	got = string(kv.Keyword().Prefix())
+	if got != expected {
+		t.Errorf("expected %q; got %q", expected, got)
+	}
 
-  expected = "dW5jb25maW5lZF91Om9iamVjdF9yOnVzZXJfaG9tZV90OnMwAA=="
-  got = kv.Value()
-  if got != expected {
-    t.Errorf("expected %q; got %q", expected, got)
-  }
+	expected = "security.selinux"
+	got = kv.Keyword().Suffix()
+	if got != expected {
+		t.Errorf("expected %q; got %q", expected, got)
+	}
 
+	expected = "dW5jb25maW5lZF91Om9iamVjdF9yOnVzZXJfaG9tZV90OnMwAA=="
+	got = kv.Value()
+	if got != expected {
+		t.Errorf("expected %q; got %q", expected, got)
+	}
 
-  expected = "xattr.security.selinux=farts"
-  got = string(kv.NewValue("farts"))
-  if got != expected {
-    t.Errorf("expected %q; got %q", expected, got)
-  }
+	expected = "xattr.security.selinux=farts"
+	got = string(kv.NewValue("farts"))
+	if got != expected {
+		t.Errorf("expected %q; got %q", expected, got)
+	}
 
-  expected = "xattr.security.selinux=farts"
-  kv1 := KeyVal(got)
-  kv2 := kv.NewValue("farts")
-  if !kv2.Equal(kv1) {
-    t.Errorf("expected equality of %q and %q", kv1, kv2)
-  }
+	expected = "xattr.security.selinux=farts"
+	kv1 := KeyVal(got)
+	kv2 := kv.NewValue("farts")
+	if !kv2.Equal(kv1) {
+		t.Errorf("expected equality of %q and %q", kv1, kv2)
+	}
 
 }
 
@@ -97,8 +102,11 @@ func TestKeywordsTimeNano(t *testing.T) {
 		if err != nil {
 			t.Errorf("unexpected error while parsing '%q': %q", mtime, err)
 		}
-		if expected != got {
-			t.Errorf("keyword didn't match, expected '%s' got '%s'", expected, got)
+		if len(got) != 1 {
+			t.Errorf("expected 1 KeyVal, but got %d", len(got))
+		}
+		if expected != got[0] {
+			t.Errorf("keyword didn't match, expected '%s' got '%s'", expected, got[0])
 		}
 	}
 }
@@ -124,8 +132,11 @@ func TestKeywordsTimeTar(t *testing.T) {
 		if err != nil {
 			t.Errorf("unexpected error while parsing '%q': %q", mtime, err)
 		}
-		if expected != got {
-			t.Errorf("keyword didn't match, expected '%s' got '%s'", expected, got)
+		if len(got) != 1 {
+			t.Errorf("expected 1 KeyVal, but got %d", len(got))
+		}
+		if expected != got[0] {
+			t.Errorf("keyword didn't match, expected '%s' got '%s'", expected, got[0])
 		}
 	}
 }

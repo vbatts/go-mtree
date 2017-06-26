@@ -51,12 +51,12 @@ func TestXattr(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check the directory
-	str, err := xattrKeywordFunc(dir, dirstat, nil)
+	kvs, err := xattrKeywordFunc(dir, dirstat, nil)
 	if err != nil {
 		t.Error(err)
 	}
-	if str == "" {
-		t.Errorf("expected a keyval; got %q", str)
+	if len(kvs) == 0 {
+		t.Errorf("expected a keyval; got none")
 	}
 
 	filestat, err := fh.Stat()
@@ -64,12 +64,12 @@ func TestXattr(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check the regular file
-	str, err = xattrKeywordFunc(filepath.Join(dir, "file"), filestat, fh)
+	kvs, err = xattrKeywordFunc(filepath.Join(dir, "file"), filestat, fh)
 	if err != nil {
 		t.Error(err)
 	}
-	if str == "" {
-		t.Errorf("expected a keyval; got %q", str)
+	if len(kvs) == 0 {
+		t.Errorf("expected a keyval; got none")
 	}
 
 	linkstat, err := os.Lstat(filepath.Join(dir, "symlink"))

@@ -3,6 +3,8 @@ package mtree
 import (
 	"os"
 	"sort"
+
+	"github.com/Sirupsen/logrus"
 )
 
 // DefaultUpdateKeywords is the default set of keywords that can take updates to the files on disk
@@ -11,7 +13,7 @@ var DefaultUpdateKeywords = []Keyword{
 	"gid",
 	"mode",
 	"time",
-	// TODO xattr
+	"xattr",
 }
 
 // Update attempts to set the attributes of root directory path, given the values of `keywords` in dh DirectoryHierarchy.
@@ -36,7 +38,7 @@ func Update(root string, dh *DirectoryHierarchy, keywords []Keyword, fs FsEval) 
 			} else if e.Name == "/unset" {
 				creator.curSet = nil
 			}
-			Debugf("%#v", e)
+			logrus.Debugf("%#v", e)
 			continue
 		case RelativeType, FullType:
 			e.Set = creator.curSet
@@ -46,20 +48,21 @@ func Update(root string, dh *DirectoryHierarchy, keywords []Keyword, fs FsEval) 
 			}
 
 			// filter the keywords to update on the file, from the keywords available for this entry:
-			var toCheck []KeyVal
-			toCheck = keyvalSelector(e.AllKeys(), keywords)
-			Debugf("toCheck(%q): %v", pathname, toCheck)
+			var kvToUpdate []KeyVal
+			kvToUpdate = keyvalSelector(e.AllKeys(), keywords)
+			logrus.Debugf("kvToUpdate(%q): %#v", pathname, kvToUpdate)
 
-			for _, kv := range toCheck {
-				if !InKeywordSlice(kv.Keyword(), keywords) {
+			for _, kv := range kvToUpdate {
+				if !InKeywordSlice(kv.Keyword().Prefix(), keywordPrefixes(keywords)) {
 					continue
 				}
-				ukFunc, ok := UpdateKeywordFuncs[kv.Keyword()]
+				logrus.Debugf("finding function for %q (%q)", kv.Keyword(), kv.Keyword().Prefix())
+				ukFunc, ok := UpdateKeywordFuncs[kv.Keyword().Prefix()]
 				if !ok {
-					Debugf("no UpdateKeywordFunc for %s; skipping", kv.Keyword())
+					logrus.Debugf("no UpdateKeywordFunc for %s; skipping", kv.Keyword())
 					continue
 				}
-				if _, err := ukFunc(pathname, kv.Value()); err != nil {
+				if _, err := ukFunc(kv.Keyword(), pathname, kv.Value()); err != nil {
 					results = append(results, InodeDelta{
 						diff: ErrorDifference,
 						path: pathname,

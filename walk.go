@@ -101,14 +101,18 @@ func Walk(root string, excludes []ExcludeFunc, keywords []Keyword, fsEval FsEval
 							defer fh.Close()
 							r = fh
 						}
-						keywordFunc, ok := KeywordFuncs[keyword]
+						keyFunc, ok := KeywordFuncs[keyword.Prefix()]
 						if !ok {
-							return fmt.Errorf("Unknown keyword %q for file %q", keyword, path)
+							return fmt.Errorf("Unknown keyword %q for file %q", keyword.Prefix(), path)
 						}
-						if str, err := creator.fs.KeywordFunc(keywordFunc)(path, info, r); err == nil && str != "" {
-							e.Keywords = append(e.Keywords, str)
-						} else if err != nil {
+						kvs, err := creator.fs.KeywordFunc(keyFunc)(path, info, r)
+						if err != nil {
 							return err
+						}
+						for _, kv := range kvs {
+							if kv != "" {
+								e.Keywords = append(e.Keywords, kv)
+							}
 						}
 						return nil
 					}()
@@ -132,16 +136,18 @@ func Walk(root string, excludes []ExcludeFunc, keywords []Keyword, fsEval FsEval
 							defer fh.Close()
 							r = fh
 						}
-						keywordFunc, ok := KeywordFuncs[keyword]
+						keyFunc, ok := KeywordFuncs[keyword.Prefix()]
 						if !ok {
-							return fmt.Errorf("Unknown keyword %q for file %q", keyword, path)
+							return fmt.Errorf("Unknown keyword %q for file %q", keyword.Prefix(), path)
 						}
-						str, err := creator.fs.KeywordFunc(keywordFunc)(path, info, r)
+						kvs, err := creator.fs.KeywordFunc(keyFunc)(path, info, r)
 						if err != nil {
 							return err
 						}
-						if str != "" {
-							klist = append(klist, str)
+						for _, kv := range kvs {
+							if kv != "" {
+								klist = append(klist, kv)
+							}
 						}
 						return nil
 					}()
@@ -190,16 +196,18 @@ func Walk(root string, excludes []ExcludeFunc, keywords []Keyword, fsEval FsEval
 					defer fh.Close()
 					r = fh
 				}
-				keywordFunc, ok := KeywordFuncs[keyword]
+				keyFunc, ok := KeywordFuncs[keyword.Prefix()]
 				if !ok {
-					return fmt.Errorf("Unknown keyword %q for file %q", keyword, path)
+					return fmt.Errorf("Unknown keyword %q for file %q", keyword.Prefix(), path)
 				}
-				str, err := creator.fs.KeywordFunc(keywordFunc)(path, info, r)
+				kvs, err := creator.fs.KeywordFunc(keyFunc)(path, info, r)
 				if err != nil {
 					return err
 				}
-				if str != "" && !inKeyValSlice(str, creator.curSet.Keywords) {
-					e.Keywords = append(e.Keywords, str)
+				for _, kv := range kvs {
+					if kv != "" && !inKeyValSlice(kv, creator.curSet.Keywords) {
+						e.Keywords = append(e.Keywords, kv)
+					}
 				}
 				return nil
 			}()

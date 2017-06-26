@@ -12,7 +12,7 @@ import (
 // simple walk of current directory, and imediately check it.
 // may not be parallelizable.
 func TestCheck(t *testing.T) {
-	dh, err := Walk(".", nil, append(DefaultKeywords, "sha1"), nil)
+	dh, err := Walk(".", nil, append(DefaultKeywords, []Keyword{"sha1", "xattr"}...), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
