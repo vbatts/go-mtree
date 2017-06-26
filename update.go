@@ -62,7 +62,7 @@ func Update(root string, dh *DirectoryHierarchy, keywords []Keyword, fs FsEval) 
 					logrus.Debugf("no UpdateKeywordFunc for %s; skipping", kv.Keyword())
 					continue
 				}
-				if _, err := ukFunc(kv.Keyword(), pathname, kv.Value()); err != nil {
+				if _, err := ukFunc(pathname, kv); err != nil {
 					results = append(results, InodeDelta{
 						diff: ErrorDifference,
 						path: pathname,
