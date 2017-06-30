@@ -3,6 +3,7 @@
 package mtree
 
 import (
+	"container/heap"
 	"encoding/json"
 	"io/ioutil"
 	"os"
@@ -11,7 +12,13 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/Sirupsen/logrus"
 )
+
+func init() {
+	logrus.SetLevel(logrus.DebugLevel)
+}
 
 func TestUpdate(t *testing.T) {
 	content := []byte("I know half of you half as well as I ought to")
@@ -102,4 +109,28 @@ func TestUpdate(t *testing.T) {
 		}
 	}
 
+}
+
+func TestPathUpdateHeap(t *testing.T) {
+	h := &pathUpdateHeap{
+		pathUpdate{Path: "not/the/longest"},
+		pathUpdate{Path: "almost/the/longest"},
+		pathUpdate{Path: "."},
+		pathUpdate{Path: "short"},
+	}
+	heap.Init(h)
+	v := "this/is/one/is/def/the/longest"
+	heap.Push(h, pathUpdate{Path: v})
+
+	longest := len(v)
+	var p string
+	for h.Len() > 0 {
+		p = heap.Pop(h).(pathUpdate).Path
+		if len(p) > longest {
+			t.Errorf("expected next path to be shorter, but it was not %q is longer than %d", p, longest)
+		}
+	}
+	if p != "." {
+		t.Errorf("expected \".\" to be the last, but got %q", p)
+	}
 }

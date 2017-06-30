@@ -254,18 +254,36 @@ func app() error {
 	if *flUpdateAttributes && stateDh != nil {
 		// -u
 		// this comes before the next case, intentionally.
-
-		// TODO brainstorm where to allow setting of xattrs. Maybe a new flag that allows a comma delimited list of keywords to update?
-		updateKeywords := []mtree.Keyword{"uid", "gid", "mode"}
-
-		result, err := mtree.Update(rootPath, stateDh, updateKeywords, nil)
+		result, err := mtree.Update(rootPath, specDh, mtree.DefaultUpdateKeywords, nil)
 		if err != nil {
 			return err
 		}
-
-		if result != nil {
+		if result != nil && len(result) > 0 {
 			fmt.Printf("%#v\n", result)
 		}
+
+		var res []mtree.InodeDelta
+		// only check the keywords that we just updated
+		res, err = mtree.Check(rootPath, specDh, mtree.DefaultUpdateKeywords, nil)
+		if err != nil {
+			return err
+		}
+		if res != nil {
+			out := formatFunc(res)
+			if _, err := os.Stdout.Write([]byte(out)); err != nil {
+				return err
+			}
+
+			// TODO: This should be a flag. Allowing files to be added and
+			//       removed and still returning "it's all good" is simply
+			//       unsafe IMO.
+			for _, diff := range res {
+				if diff.Type() == mtree.Modified {
+					return fmt.Errorf("mainfest validation failed")
+				}
+			}
+		}
+
 		return nil
 	}
 
@@ -300,7 +318,6 @@ func app() error {
 	// This is a validation.
 	if specDh != nil && stateDh != nil {
 		var res []mtree.InodeDelta
-
 		res, err = mtree.Compare(specDh, stateDh, currentKeywords)
 		if err != nil {
 			return err
