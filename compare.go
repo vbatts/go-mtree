@@ -197,7 +197,7 @@ func compareEntry(oldEntry, newEntry Entry) ([]KeyDelta, error) {
 	for _, kv := range oldKeys {
 		key := kv.Keyword()
 		// only add this diff if the new keys has this keyword
-		if key != "tar_time" && key != "time" && key != "xattr" && len(HasKeyword(newKeys, key)) == 0 {
+		if key != "tar_time" && key != "time" && key.Prefix() != "xattr" && len(HasKeyword(newKeys, key)) == 0 {
 			continue
 		}
 
@@ -216,7 +216,7 @@ func compareEntry(oldEntry, newEntry Entry) ([]KeyDelta, error) {
 	for _, kv := range newKeys {
 		key := kv.Keyword()
 		// only add this diff if the old keys has this keyword
-		if key != "tar_time" && key != "time" && key != "xattr" && len(HasKeyword(oldKeys, key)) == 0 {
+		if key != "tar_time" && key != "time" && key.Prefix() != "xattr" && len(HasKeyword(oldKeys, key)) == 0 {
 			continue
 		}
 
@@ -414,7 +414,7 @@ func Compare(oldDh, newDh *DirectoryHierarchy, keys []Keyword) ([]InodeDelta, er
 			if keys != nil {
 				var filterChanged []KeyDelta
 				for _, keyDiff := range changed {
-					if InKeywordSlice(keyDiff.name, keys) {
+					if InKeywordSlice(keyDiff.name.Prefix(), keys) {
 						filterChanged = append(filterChanged, keyDiff)
 					}
 				}
