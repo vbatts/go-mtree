@@ -7,22 +7,43 @@ import (
 )
 
 var (
-	testFiles  = []string{"testdata/source.mtree"}
-	numEntries = map[EntryType]int{
-		FullType:     0,
-		RelativeType: 45,
-		CommentType:  37,
-		SpecialType:  7,
-		DotDotType:   17,
-		BlankType:    34,
+	testFiles = []struct {
+		Name   string
+		Counts map[EntryType]int
+		Len    int64
+	}{
+		{
+			Name: "testdata/source.mtree",
+			Counts: map[EntryType]int{
+				FullType:     0,
+				RelativeType: 45,
+				CommentType:  37,
+				SpecialType:  7,
+				DotDotType:   17,
+				BlankType:    34,
+			},
+			Len: int64(7887),
+		},
+		{
+			Name: "testdata/source.casync-mtree",
+			Counts: map[EntryType]int{
+				FullType:     744,
+				RelativeType: 56,
+				CommentType:  37,
+				SpecialType:  7,
+				DotDotType:   17,
+				BlankType:    34,
+			},
+			Len: int64(168439),
+		},
 	}
-	expectedLength = int64(7887)
 )
 
 func TestParser(t *testing.T) {
-	for _, file := range testFiles {
+	for i, tf := range testFiles {
+		_ = i
 		func() {
-			fh, err := os.Open(file)
+			fh, err := os.Open(tf.Name)
 			if err != nil {
 				t.Error(err)
 				return
@@ -33,8 +54,16 @@ func TestParser(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
+			/*
+				if i == 1 {
+					buf, err := xml.MarshalIndent(dh, "", "  ")
+					if err == nil {
+						t.Error(string(buf))
+					}
+				}
+			*/
 			gotNums := countTypes(dh)
-			for typ, num := range numEntries {
+			for typ, num := range tf.Counts {
 				if gNum, ok := gotNums[typ]; ok {
 					if num != gNum {
 						t.Errorf("for type %s: expected %d, got %d", typ, num, gNum)
@@ -46,8 +75,8 @@ func TestParser(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			if i != expectedLength {
-				t.Errorf("expected to write %d, but wrote %d", expectedLength, i)
+			if i != tf.Len {
+				t.Errorf("expected to write %d, but wrote %d", tf.Len, i)
 			}
 
 		}()

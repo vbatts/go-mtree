@@ -11,7 +11,7 @@ func TestWalk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	numEntries = countTypes(dh)
+	numEntries := countTypes(dh)
 
 	fh, err := ioutil.TempFile("", "walk.")
 	if err != nil {
