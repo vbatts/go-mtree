@@ -325,13 +325,17 @@ func compareEntry(oldEntry, newEntry Entry) ([]KeyDelta, error) {
 // missing entries and the like). A missing or extra key is treated as a
 // Modified type.
 //
-// If oldDh or newDh are empty, we assume they are a hierarchy that is
+// If thisDh or thatDh are empty, we assume they are a hierarchy that is
 // completely empty. This is purely for helping callers create synthetic
 // InodeDeltas.
 //
+// Comparing this directory hierarchy to that directory hierarchy is that
+// sometimes it has few than all files, or may not have directories, etc.,
+// so lack of presence of entries in thisDh may not be reportable.
+//
 // NB: The order of the parameters matters (old, new) because Extra and
 //     Missing are considered as different discrepancy types.
-func Compare(oldDh, newDh *DirectoryHierarchy, keys []Keyword) ([]InodeDelta, error) {
+func Compare(thisDh, thatDh *DirectoryHierarchy, keys []Keyword) ([]InodeDelta, error) {
 	// Represents the new and old states for an entry.
 	type stateT struct {
 		Old *Entry
@@ -343,8 +347,8 @@ func Compare(oldDh, newDh *DirectoryHierarchy, keys []Keyword) ([]InodeDelta, er
 	diffs := map[string]*stateT{}
 
 	// First, iterate over the old hierarchy. If nil, pretend it's empty.
-	if oldDh != nil {
-		for _, e := range oldDh.Entries {
+	if thisDh != nil {
+		for _, e := range thisDh.Entries {
 			if e.Type == RelativeType || e.Type == FullType {
 				path, err := e.Path()
 				if err != nil {
@@ -365,8 +369,8 @@ func Compare(oldDh, newDh *DirectoryHierarchy, keys []Keyword) ([]InodeDelta, er
 	}
 
 	// Then, iterate over the new hierarchy. If nil, pretend it's empty.
-	if newDh != nil {
-		for _, e := range newDh.Entries {
+	if thatDh != nil {
+		for _, e := range thatDh.Entries {
 			if e.Type == RelativeType || e.Type == FullType {
 				path, err := e.Path()
 				if err != nil {
