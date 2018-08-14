@@ -29,5 +29,5 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%d FAILED tests\n", failed)
 		os.Exit(1)
 	}
-	fmt.Fprintf(os.Stdout, "SUCCESS: no cli tests failed")
+	fmt.Fprintf(os.Stdout, "SUCCESS: no cli tests failed\n")
 }
