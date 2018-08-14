@@ -14,6 +14,33 @@ func (bp byPos) Len() int           { return len(bp) }
 func (bp byPos) Less(i, j int) bool { return bp[i].Pos < bp[j].Pos }
 func (bp byPos) Swap(i, j int)      { bp[i], bp[j] = bp[j], bp[i] }
 
+type byName []Entry
+
+func (bp byName) Len() int { return len(bp) }
+func (bp byName) Less(i, j int) bool {
+	var iParent string
+	var jParent string
+	var err error
+	if bp[i].Parent != nil {
+		iParent, err = bp[i].Parent.Path()
+		if err != nil {
+			return false
+		}
+	}
+	iName := filepath.Clean(filepath.Join(iParent, bp[i].Name))
+
+	if bp[j].Parent != nil {
+		jParent, err = bp[j].Parent.Path()
+		if err != nil {
+			return false
+		}
+	}
+	jName := filepath.Clean(filepath.Join(jParent, bp[j].Name))
+
+	return iName < jName
+}
+func (bp byName) Swap(i, j int) { bp[i], bp[j] = bp[j], bp[i] }
+
 // Entry is each component of content in the mtree spec file
 type Entry struct {
 	Parent     *Entry   // up

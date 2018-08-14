@@ -3,6 +3,7 @@ package mtree
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 )
 
@@ -348,6 +349,7 @@ func Compare(thisDh, thatDh *DirectoryHierarchy, keys []Keyword) ([]InodeDelta, 
 
 	// First, iterate over the old hierarchy. If nil, pretend it's empty.
 	if thisDh != nil {
+		sort.Sort(byName(thisDh.Entries))
 		for _, e := range thisDh.Entries {
 			if e.Type == RelativeType || e.Type == FullType {
 				path, err := e.Path()
@@ -370,6 +372,7 @@ func Compare(thisDh, thatDh *DirectoryHierarchy, keys []Keyword) ([]InodeDelta, 
 
 	// Then, iterate over the new hierarchy. If nil, pretend it's empty.
 	if thatDh != nil {
+		sort.Sort(byName(thatDh.Entries))
 		for _, e := range thatDh.Entries {
 			if e.Type == RelativeType || e.Type == FullType {
 				path, err := e.Path()
