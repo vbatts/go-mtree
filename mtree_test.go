@@ -4,6 +4,8 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 var (
@@ -54,14 +56,15 @@ func TestParser(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			/*
-				if i == 1 {
-					buf, err := xml.MarshalIndent(dh, "", "  ")
-					if err == nil {
-						t.Error(string(buf))
-					}
-				}
-			*/
+
+			if i == 1 {
+				spew.Dump(dh)
+				//buf, err := xml.MarshalIndent(dh, "", "  ")
+				//if err == nil {
+				//t.Error(string(buf))
+				//}
+			}
+
 			gotNums := countTypes(dh)
 			for typ, num := range tf.Counts {
 				if gNum, ok := gotNums[typ]; ok {
