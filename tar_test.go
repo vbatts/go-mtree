@@ -109,7 +109,7 @@ func TestTar(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := TarCheck(tdh, dh, append(DefaultKeywords, "sha1"))
+	res, err := Compare(tdh, dh, append(DefaultKeywords, "sha1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestArchiveCreation(t *testing.T) {
 	}
 
 	// Test the tar manifest against itself
-	res, err = TarCheck(tdh, tdh, []Keyword{"sha1"})
+	res, err = Compare(tdh, tdh, []Keyword{"sha1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestArchiveCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err = TarCheck(tdh, dh, []Keyword{"sha1"})
+	res, err = Compare(tdh, dh, []Keyword{"sha1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestTreeTraversal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := TarCheck(tdh, tdh, []Keyword{"sha1"})
+	res, err := Compare(tdh, tdh, []Keyword{"sha1"})
 	if err != nil {
 		t.Fatal(err)
 	}
