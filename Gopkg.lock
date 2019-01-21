@@ -18,6 +18,14 @@
   version = "v1.7.0"
 
 [[projects]]
+  digest = "1:0a69a1c0db3591fcefb47f115b224592c8dfa4368b7ba9fae509d5e16cdc95c8"
+  name = "github.com/konsorten/go-windows-terminal-sequences"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "5c8c8bd35d3832f5d134ae1e1e375b69a4d25242"
+  version = "v1.0.1"
+
+[[projects]]
   digest = "1:c658e84ad3916da105a761660dcaeb01e63416c8ec7bc62256a9b411a05fcd67"
   name = "github.com/mattn/go-colorable"
   packages = ["."]
@@ -34,29 +42,34 @@
   version = "v0.0.4"
 
 [[projects]]
-  digest = "1:d867dfa6751c8d7a435821ad3b736310c2ed68945d05b50fb9d23aee0540c8cc"
+  digest = "1:87c2e02fb01c27060ccc5ba7c5a407cc91147726f8f40b70cceeedbc52b1f3a8"
   name = "github.com/sirupsen/logrus"
   packages = ["."]
   pruneopts = "UT"
-  revision = "3e01752db0189b9157070a0e1668a620f9a85da2"
-  version = "v1.0.6"
+  revision = "e1e72e9de974bd926e5c56f83753fba2df402ce5"
+  version = "v1.3.0"
 
 [[projects]]
-  digest = "1:05e35c393defed734dba80c107a35b4d15f7a1e74379b68e666634049ea6af31"
+  branch = "master"
+  digest = "1:ee2bb461b8a43f9eace0910d7c9f567676760a038dc996295da0efff6f62f353"
   name = "golang.org/x/crypto"
   packages = [
     "ripemd160",
     "ssh/terminal",
   ]
   pruneopts = "UT"
-  revision = "1351f936d976c60a0a48d728281922cf63eafb8d"
+  revision = "ff983b9c42bc9fbf91556e191cc8efb585c16908"
 
 [[projects]]
-  digest = "1:697d25e89b08707d4013085d26838044d58f61507cc08a6e08f9c59a789aee18"
+  branch = "master"
+  digest = "1:72f402ba458cb14ed7964c8b9a38d992f27834b3cf3479f3b08ea9e5334811b3"
   name = "golang.org/x/sys"
-  packages = ["unix"]
+  packages = [
+    "unix",
+    "windows",
+  ]
   pruneopts = "UT"
-  revision = "8dbc5d05d6edcc104950cc299a1ce6641235bc86"
+  revision = "770c60269bf0ef965e9e7ac8bedcb6bca2a1cefd"
 
 [solve-meta]
   analyzer-name = "dep"
