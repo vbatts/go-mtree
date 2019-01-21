@@ -7,6 +7,7 @@ package ssh
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/des"
 	"crypto/rc4"
 	"crypto/subtle"
 	"encoding/binary"
@@ -14,6 +15,11 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"io/ioutil"
+	"math/bits"
+
+	"golang.org/x/crypto/internal/chacha20"
+	"golang.org/x/crypto/poly1305"
 )
 
 const (
@@ -51,68 +57,78 @@ func newRC4(key, iv []byte) (cipher.Stream, error) {
 	return rc4.NewCipher(key)
 }
 
-type streamCipherMode struct {
-	keySize    int
-	ivSize     int
-	skip       int
-	createFunc func(key, iv []byte) (cipher.Stream, error)
+type cipherMode struct {
+	keySize int
+	ivSize  int
+	create  func(key, iv []byte, macKey []byte, algs directionAlgorithms) (packetCipher, error)
 }
 
-func (c *streamCipherMode) createStream(key, iv []byte) (cipher.Stream, error) {
-	if len(key) < c.keySize {
-		panic("ssh: key length too small for cipher")
-	}
-	if len(iv) < c.ivSize {
-		panic("ssh: iv too small for cipher")
-	}
-
-	stream, err := c.createFunc(key[:c.keySize], iv[:c.ivSize])
-	if err != nil {
-		return nil, err
-	}
-
-	var streamDump []byte
-	if c.skip > 0 {
-		streamDump = make([]byte, 512)
-	}
-
-	for remainingToDump := c.skip; remainingToDump > 0; {
-		dumpThisTime := remainingToDump
-		if dumpThisTime > len(streamDump) {
-			dumpThisTime = len(streamDump)
+func streamCipherMode(skip int, createFunc func(key, iv []byte) (cipher.Stream, error)) func(key, iv []byte, macKey []byte, algs directionAlgorithms) (packetCipher, error) {
+	return func(key, iv, macKey []byte, algs directionAlgorithms) (packetCipher, error) {
+		stream, err := createFunc(key, iv)
+		if err != nil {
+			return nil, err
 		}
-		stream.XORKeyStream(streamDump[:dumpThisTime], streamDump[:dumpThisTime])
-		remainingToDump -= dumpThisTime
-	}
 
-	return stream, nil
+		var streamDump []byte
+		if skip > 0 {
+			streamDump = make([]byte, 512)
+		}
+
+		for remainingToDump := skip; remainingToDump > 0; {
+			dumpThisTime := remainingToDump
+			if dumpThisTime > len(streamDump) {
+				dumpThisTime = len(streamDump)
+			}
+			stream.XORKeyStream(streamDump[:dumpThisTime], streamDump[:dumpThisTime])
+			remainingToDump -= dumpThisTime
+		}
+
+		mac := macModes[algs.MAC].new(macKey)
+		return &streamPacketCipher{
+			mac:       mac,
+			etm:       macModes[algs.MAC].etm,
+			macResult: make([]byte, mac.Size()),
+			cipher:    stream,
+		}, nil
+	}
 }
 
 // cipherModes documents properties of supported ciphers. Ciphers not included
 // are not supported and will not be negotiated, even if explicitly requested in
 // ClientConfig.Crypto.Ciphers.
-var cipherModes = map[string]*streamCipherMode{
+var cipherModes = map[string]*cipherMode{
 	// Ciphers from RFC4344, which introduced many CTR-based ciphers. Algorithms
 	// are defined in the order specified in the RFC.
-	"aes128-ctr": {16, aes.BlockSize, 0, newAESCTR},
-	"aes192-ctr": {24, aes.BlockSize, 0, newAESCTR},
-	"aes256-ctr": {32, aes.BlockSize, 0, newAESCTR},
+	"aes128-ctr": {16, aes.BlockSize, streamCipherMode(0, newAESCTR)},
+	"aes192-ctr": {24, aes.BlockSize, streamCipherMode(0, newAESCTR)},
+	"aes256-ctr": {32, aes.BlockSize, streamCipherMode(0, newAESCTR)},
 
 	// Ciphers from RFC4345, which introduces security-improved arcfour ciphers.
 	// They are defined in the order specified in the RFC.
-	"arcfour128": {16, 0, 1536, newRC4},
-	"arcfour256": {32, 0, 1536, newRC4},
+	"arcfour128": {16, 0, streamCipherMode(1536, newRC4)},
+	"arcfour256": {32, 0, streamCipherMode(1536, newRC4)},
 
 	// Cipher defined in RFC 4253, which describes SSH Transport Layer Protocol.
 	// Note that this cipher is not safe, as stated in RFC 4253: "Arcfour (and
 	// RC4) has problems with weak keys, and should be used with caution."
 	// RFC4345 introduces improved versions of Arcfour.
-	"arcfour": {16, 0, 0, newRC4},
+	"arcfour": {16, 0, streamCipherMode(0, newRC4)},
 
-	// AES-GCM is not a stream cipher, so it is constructed with a
-	// special case. If we add any more non-stream ciphers, we
-	// should invest a cleaner way to do this.
-	gcmCipherID: {16, 12, 0, nil},
+	// AEAD ciphers
+	gcmCipherID:        {16, 12, newGCMCipher},
+	chacha20Poly1305ID: {64, 0, newChaCha20Cipher},
+
+	// CBC mode is insecure and so is not included in the default config.
+	// (See http://www.isg.rhul.ac.uk/~kp/SandPfinal.pdf). If absolutely
+	// needed, it's possible to specify a custom Config to enable it.
+	// You should expect that an active attacker can recover plaintext if
+	// you do.
+	aes128cbcID: {16, aes.BlockSize, newAESCBCCipher},
+
+	// 3des-cbc is insecure and is not included in the default
+	// config.
+	tripledescbcID: {24, des.BlockSize, newTripleDESCBCCipher},
 }
 
 // prefixLen is the length of the packet prefix that contains the packet length
@@ -123,6 +139,7 @@ const prefixLen = 5
 type streamPacketCipher struct {
 	mac    hash.Hash
 	cipher cipher.Stream
+	etm    bool
 
 	// The following members are to avoid per-packet allocations.
 	prefix      [prefixLen]byte
@@ -138,7 +155,14 @@ func (s *streamPacketCipher) readPacket(seqNum uint32, r io.Reader) ([]byte, err
 		return nil, err
 	}
 
-	s.cipher.XORKeyStream(s.prefix[:], s.prefix[:])
+	var encryptedPaddingLength [1]byte
+	if s.mac != nil && s.etm {
+		copy(encryptedPaddingLength[:], s.prefix[4:5])
+		s.cipher.XORKeyStream(s.prefix[4:5], s.prefix[4:5])
+	} else {
+		s.cipher.XORKeyStream(s.prefix[:], s.prefix[:])
+	}
+
 	length := binary.BigEndian.Uint32(s.prefix[0:4])
 	paddingLength := uint32(s.prefix[4])
 
@@ -147,7 +171,12 @@ func (s *streamPacketCipher) readPacket(seqNum uint32, r io.Reader) ([]byte, err
 		s.mac.Reset()
 		binary.BigEndian.PutUint32(s.seqNumBytes[:], seqNum)
 		s.mac.Write(s.seqNumBytes[:])
-		s.mac.Write(s.prefix[:])
+		if s.etm {
+			s.mac.Write(s.prefix[:4])
+			s.mac.Write(encryptedPaddingLength[:])
+		} else {
+			s.mac.Write(s.prefix[:])
+		}
 		macSize = uint32(s.mac.Size())
 	}
 
@@ -172,10 +201,17 @@ func (s *streamPacketCipher) readPacket(seqNum uint32, r io.Reader) ([]byte, err
 	}
 	mac := s.packetData[length-1:]
 	data := s.packetData[:length-1]
+
+	if s.mac != nil && s.etm {
+		s.mac.Write(data)
+	}
+
 	s.cipher.XORKeyStream(data, data)
 
 	if s.mac != nil {
-		s.mac.Write(data)
+		if !s.etm {
+			s.mac.Write(data)
+		}
 		s.macResult = s.mac.Sum(s.macResult[:0])
 		if subtle.ConstantTimeCompare(s.macResult, mac) != 1 {
 			return nil, errors.New("ssh: MAC failure")
@@ -191,7 +227,13 @@ func (s *streamPacketCipher) writePacket(seqNum uint32, w io.Writer, rand io.Rea
 		return errors.New("ssh: packet too large")
 	}
 
-	paddingLength := packetSizeMultiple - (prefixLen+len(packet))%packetSizeMultiple
+	aadlen := 0
+	if s.mac != nil && s.etm {
+		// packet length is not encrypted for EtM modes
+		aadlen = 4
+	}
+
+	paddingLength := packetSizeMultiple - (prefixLen+len(packet)-aadlen)%packetSizeMultiple
 	if paddingLength < 4 {
 		paddingLength += packetSizeMultiple
 	}
@@ -208,14 +250,36 @@ func (s *streamPacketCipher) writePacket(seqNum uint32, w io.Writer, rand io.Rea
 		s.mac.Reset()
 		binary.BigEndian.PutUint32(s.seqNumBytes[:], seqNum)
 		s.mac.Write(s.seqNumBytes[:])
+
+		if s.etm {
+			// For EtM algorithms, the packet length must stay unencrypted,
+			// but the following data (padding length) must be encrypted
+			s.cipher.XORKeyStream(s.prefix[4:5], s.prefix[4:5])
+		}
+
 		s.mac.Write(s.prefix[:])
+
+		if !s.etm {
+			// For non-EtM algorithms, the algorithm is applied on unencrypted data
+			s.mac.Write(packet)
+			s.mac.Write(padding)
+		}
+	}
+
+	if !(s.mac != nil && s.etm) {
+		// For EtM algorithms, the padding length has already been encrypted
+		// and the packet length must remain unencrypted
+		s.cipher.XORKeyStream(s.prefix[:], s.prefix[:])
+	}
+
+	s.cipher.XORKeyStream(packet, packet)
+	s.cipher.XORKeyStream(padding, padding)
+
+	if s.mac != nil && s.etm {
+		// For EtM algorithms, packet and padding must be encrypted
 		s.mac.Write(packet)
 		s.mac.Write(padding)
 	}
-
-	s.cipher.XORKeyStream(s.prefix[:], s.prefix[:])
-	s.cipher.XORKeyStream(packet, packet)
-	s.cipher.XORKeyStream(padding, padding)
 
 	if _, err := w.Write(s.prefix[:]); err != nil {
 		return err
@@ -244,7 +308,7 @@ type gcmCipher struct {
 	buf    []byte
 }
 
-func newGCMCipher(iv, key, macKey []byte) (packetCipher, error) {
+func newGCMCipher(key, iv, unusedMacKey []byte, unusedAlgs directionAlgorithms) (packetCipher, error) {
 	c, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -312,7 +376,7 @@ func (c *gcmCipher) readPacket(seqNum uint32, r io.Reader) ([]byte, error) {
 	}
 	length := binary.BigEndian.Uint32(c.prefix[:])
 	if length > maxPacket {
-		return nil, errors.New("ssh: max packet length exceeded.")
+		return nil, errors.New("ssh: max packet length exceeded")
 	}
 
 	if cap(c.buf) < int(length+gcmTagSize) {
@@ -332,7 +396,9 @@ func (c *gcmCipher) readPacket(seqNum uint32, r io.Reader) ([]byte, error) {
 	c.incIV()
 
 	padding := plain[0]
-	if padding < 4 || padding >= 20 {
+	if padding < 4 {
+		// padding is a byte, so it automatically satisfies
+		// the maximum size, which is 255.
 		return nil, fmt.Errorf("ssh: illegal padding %d", padding)
 	}
 
@@ -341,4 +407,364 @@ func (c *gcmCipher) readPacket(seqNum uint32, r io.Reader) ([]byte, error) {
 	}
 	plain = plain[1 : length-uint32(padding)]
 	return plain, nil
+}
+
+// cbcCipher implements aes128-cbc cipher defined in RFC 4253 section 6.1
+type cbcCipher struct {
+	mac       hash.Hash
+	macSize   uint32
+	decrypter cipher.BlockMode
+	encrypter cipher.BlockMode
+
+	// The following members are to avoid per-packet allocations.
+	seqNumBytes [4]byte
+	packetData  []byte
+	macResult   []byte
+
+	// Amount of data we should still read to hide which
+	// verification error triggered.
+	oracleCamouflage uint32
+}
+
+func newCBCCipher(c cipher.Block, key, iv, macKey []byte, algs directionAlgorithms) (packetCipher, error) {
+	cbc := &cbcCipher{
+		mac:        macModes[algs.MAC].new(macKey),
+		decrypter:  cipher.NewCBCDecrypter(c, iv),
+		encrypter:  cipher.NewCBCEncrypter(c, iv),
+		packetData: make([]byte, 1024),
+	}
+	if cbc.mac != nil {
+		cbc.macSize = uint32(cbc.mac.Size())
+	}
+
+	return cbc, nil
+}
+
+func newAESCBCCipher(key, iv, macKey []byte, algs directionAlgorithms) (packetCipher, error) {
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	cbc, err := newCBCCipher(c, key, iv, macKey, algs)
+	if err != nil {
+		return nil, err
+	}
+
+	return cbc, nil
+}
+
+func newTripleDESCBCCipher(key, iv, macKey []byte, algs directionAlgorithms) (packetCipher, error) {
+	c, err := des.NewTripleDESCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	cbc, err := newCBCCipher(c, key, iv, macKey, algs)
+	if err != nil {
+		return nil, err
+	}
+
+	return cbc, nil
+}
+
+func maxUInt32(a, b int) uint32 {
+	if a > b {
+		return uint32(a)
+	}
+	return uint32(b)
+}
+
+const (
+	cbcMinPacketSizeMultiple = 8
+	cbcMinPacketSize         = 16
+	cbcMinPaddingSize        = 4
+)
+
+// cbcError represents a verification error that may leak information.
+type cbcError string
+
+func (e cbcError) Error() string { return string(e) }
+
+func (c *cbcCipher) readPacket(seqNum uint32, r io.Reader) ([]byte, error) {
+	p, err := c.readPacketLeaky(seqNum, r)
+	if err != nil {
+		if _, ok := err.(cbcError); ok {
+			// Verification error: read a fixed amount of
+			// data, to make distinguishing between
+			// failing MAC and failing length check more
+			// difficult.
+			io.CopyN(ioutil.Discard, r, int64(c.oracleCamouflage))
+		}
+	}
+	return p, err
+}
+
+func (c *cbcCipher) readPacketLeaky(seqNum uint32, r io.Reader) ([]byte, error) {
+	blockSize := c.decrypter.BlockSize()
+
+	// Read the header, which will include some of the subsequent data in the
+	// case of block ciphers - this is copied back to the payload later.
+	// How many bytes of payload/padding will be read with this first read.
+	firstBlockLength := uint32((prefixLen + blockSize - 1) / blockSize * blockSize)
+	firstBlock := c.packetData[:firstBlockLength]
+	if _, err := io.ReadFull(r, firstBlock); err != nil {
+		return nil, err
+	}
+
+	c.oracleCamouflage = maxPacket + 4 + c.macSize - firstBlockLength
+
+	c.decrypter.CryptBlocks(firstBlock, firstBlock)
+	length := binary.BigEndian.Uint32(firstBlock[:4])
+	if length > maxPacket {
+		return nil, cbcError("ssh: packet too large")
+	}
+	if length+4 < maxUInt32(cbcMinPacketSize, blockSize) {
+		// The minimum size of a packet is 16 (or the cipher block size, whichever
+		// is larger) bytes.
+		return nil, cbcError("ssh: packet too small")
+	}
+	// The length of the packet (including the length field but not the MAC) must
+	// be a multiple of the block size or 8, whichever is larger.
+	if (length+4)%maxUInt32(cbcMinPacketSizeMultiple, blockSize) != 0 {
+		return nil, cbcError("ssh: invalid packet length multiple")
+	}
+
+	paddingLength := uint32(firstBlock[4])
+	if paddingLength < cbcMinPaddingSize || length <= paddingLength+1 {
+		return nil, cbcError("ssh: invalid packet length")
+	}
+
+	// Positions within the c.packetData buffer:
+	macStart := 4 + length
+	paddingStart := macStart - paddingLength
+
+	// Entire packet size, starting before length, ending at end of mac.
+	entirePacketSize := macStart + c.macSize
+
+	// Ensure c.packetData is large enough for the entire packet data.
+	if uint32(cap(c.packetData)) < entirePacketSize {
+		// Still need to upsize and copy, but this should be rare at runtime, only
+		// on upsizing the packetData buffer.
+		c.packetData = make([]byte, entirePacketSize)
+		copy(c.packetData, firstBlock)
+	} else {
+		c.packetData = c.packetData[:entirePacketSize]
+	}
+
+	n, err := io.ReadFull(r, c.packetData[firstBlockLength:])
+	if err != nil {
+		return nil, err
+	}
+	c.oracleCamouflage -= uint32(n)
+
+	remainingCrypted := c.packetData[firstBlockLength:macStart]
+	c.decrypter.CryptBlocks(remainingCrypted, remainingCrypted)
+
+	mac := c.packetData[macStart:]
+	if c.mac != nil {
+		c.mac.Reset()
+		binary.BigEndian.PutUint32(c.seqNumBytes[:], seqNum)
+		c.mac.Write(c.seqNumBytes[:])
+		c.mac.Write(c.packetData[:macStart])
+		c.macResult = c.mac.Sum(c.macResult[:0])
+		if subtle.ConstantTimeCompare(c.macResult, mac) != 1 {
+			return nil, cbcError("ssh: MAC failure")
+		}
+	}
+
+	return c.packetData[prefixLen:paddingStart], nil
+}
+
+func (c *cbcCipher) writePacket(seqNum uint32, w io.Writer, rand io.Reader, packet []byte) error {
+	effectiveBlockSize := maxUInt32(cbcMinPacketSizeMultiple, c.encrypter.BlockSize())
+
+	// Length of encrypted portion of the packet (header, payload, padding).
+	// Enforce minimum padding and packet size.
+	encLength := maxUInt32(prefixLen+len(packet)+cbcMinPaddingSize, cbcMinPaddingSize)
+	// Enforce block size.
+	encLength = (encLength + effectiveBlockSize - 1) / effectiveBlockSize * effectiveBlockSize
+
+	length := encLength - 4
+	paddingLength := int(length) - (1 + len(packet))
+
+	// Overall buffer contains: header, payload, padding, mac.
+	// Space for the MAC is reserved in the capacity but not the slice length.
+	bufferSize := encLength + c.macSize
+	if uint32(cap(c.packetData)) < bufferSize {
+		c.packetData = make([]byte, encLength, bufferSize)
+	} else {
+		c.packetData = c.packetData[:encLength]
+	}
+
+	p := c.packetData
+
+	// Packet header.
+	binary.BigEndian.PutUint32(p, length)
+	p = p[4:]
+	p[0] = byte(paddingLength)
+
+	// Payload.
+	p = p[1:]
+	copy(p, packet)
+
+	// Padding.
+	p = p[len(packet):]
+	if _, err := io.ReadFull(rand, p); err != nil {
+		return err
+	}
+
+	if c.mac != nil {
+		c.mac.Reset()
+		binary.BigEndian.PutUint32(c.seqNumBytes[:], seqNum)
+		c.mac.Write(c.seqNumBytes[:])
+		c.mac.Write(c.packetData)
+		// The MAC is now appended into the capacity reserved for it earlier.
+		c.packetData = c.mac.Sum(c.packetData)
+	}
+
+	c.encrypter.CryptBlocks(c.packetData[:encLength], c.packetData[:encLength])
+
+	if _, err := w.Write(c.packetData); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+const chacha20Poly1305ID = "chacha20-poly1305@openssh.com"
+
+// chacha20Poly1305Cipher implements the chacha20-poly1305@openssh.com
+// AEAD, which is described here:
+//
+//   https://tools.ietf.org/html/draft-josefsson-ssh-chacha20-poly1305-openssh-00
+//
+// the methods here also implement padding, which RFC4253 Section 6
+// also requires of stream ciphers.
+type chacha20Poly1305Cipher struct {
+	lengthKey  [8]uint32
+	contentKey [8]uint32
+	buf        []byte
+}
+
+func newChaCha20Cipher(key, unusedIV, unusedMACKey []byte, unusedAlgs directionAlgorithms) (packetCipher, error) {
+	if len(key) != 64 {
+		panic(len(key))
+	}
+
+	c := &chacha20Poly1305Cipher{
+		buf: make([]byte, 256),
+	}
+
+	for i := range c.contentKey {
+		c.contentKey[i] = binary.LittleEndian.Uint32(key[i*4 : (i+1)*4])
+	}
+	for i := range c.lengthKey {
+		c.lengthKey[i] = binary.LittleEndian.Uint32(key[(i+8)*4 : (i+9)*4])
+	}
+	return c, nil
+}
+
+func (c *chacha20Poly1305Cipher) readPacket(seqNum uint32, r io.Reader) ([]byte, error) {
+	nonce := [3]uint32{0, 0, bits.ReverseBytes32(seqNum)}
+	s := chacha20.New(c.contentKey, nonce)
+	var polyKey [32]byte
+	s.XORKeyStream(polyKey[:], polyKey[:])
+	s.Advance() // skip next 32 bytes
+
+	encryptedLength := c.buf[:4]
+	if _, err := io.ReadFull(r, encryptedLength); err != nil {
+		return nil, err
+	}
+
+	var lenBytes [4]byte
+	chacha20.New(c.lengthKey, nonce).XORKeyStream(lenBytes[:], encryptedLength)
+
+	length := binary.BigEndian.Uint32(lenBytes[:])
+	if length > maxPacket {
+		return nil, errors.New("ssh: invalid packet length, packet too large")
+	}
+
+	contentEnd := 4 + length
+	packetEnd := contentEnd + poly1305.TagSize
+	if uint32(cap(c.buf)) < packetEnd {
+		c.buf = make([]byte, packetEnd)
+		copy(c.buf[:], encryptedLength)
+	} else {
+		c.buf = c.buf[:packetEnd]
+	}
+
+	if _, err := io.ReadFull(r, c.buf[4:packetEnd]); err != nil {
+		return nil, err
+	}
+
+	var mac [poly1305.TagSize]byte
+	copy(mac[:], c.buf[contentEnd:packetEnd])
+	if !poly1305.Verify(&mac, c.buf[:contentEnd], &polyKey) {
+		return nil, errors.New("ssh: MAC failure")
+	}
+
+	plain := c.buf[4:contentEnd]
+	s.XORKeyStream(plain, plain)
+
+	padding := plain[0]
+	if padding < 4 {
+		// padding is a byte, so it automatically satisfies
+		// the maximum size, which is 255.
+		return nil, fmt.Errorf("ssh: illegal padding %d", padding)
+	}
+
+	if int(padding)+1 >= len(plain) {
+		return nil, fmt.Errorf("ssh: padding %d too large", padding)
+	}
+
+	plain = plain[1 : len(plain)-int(padding)]
+
+	return plain, nil
+}
+
+func (c *chacha20Poly1305Cipher) writePacket(seqNum uint32, w io.Writer, rand io.Reader, payload []byte) error {
+	nonce := [3]uint32{0, 0, bits.ReverseBytes32(seqNum)}
+	s := chacha20.New(c.contentKey, nonce)
+	var polyKey [32]byte
+	s.XORKeyStream(polyKey[:], polyKey[:])
+	s.Advance() // skip next 32 bytes
+
+	// There is no blocksize, so fall back to multiple of 8 byte
+	// padding, as described in RFC 4253, Sec 6.
+	const packetSizeMultiple = 8
+
+	padding := packetSizeMultiple - (1+len(payload))%packetSizeMultiple
+	if padding < 4 {
+		padding += packetSizeMultiple
+	}
+
+	// size (4 bytes), padding (1), payload, padding, tag.
+	totalLength := 4 + 1 + len(payload) + padding + poly1305.TagSize
+	if cap(c.buf) < totalLength {
+		c.buf = make([]byte, totalLength)
+	} else {
+		c.buf = c.buf[:totalLength]
+	}
+
+	binary.BigEndian.PutUint32(c.buf, uint32(1+len(payload)+padding))
+	chacha20.New(c.lengthKey, nonce).XORKeyStream(c.buf, c.buf[:4])
+	c.buf[4] = byte(padding)
+	copy(c.buf[5:], payload)
+	packetEnd := 5 + len(payload) + padding
+	if _, err := io.ReadFull(rand, c.buf[5+len(payload):packetEnd]); err != nil {
+		return err
+	}
+
+	s.XORKeyStream(c.buf[4:], c.buf[4:packetEnd])
+
+	var mac [poly1305.TagSize]byte
+	poly1305.Sum(&mac, c.buf[:packetEnd], &polyKey)
+
+	copy(c.buf[packetEnd:], mac[:])
+
+	if _, err := w.Write(c.buf); err != nil {
+		return err
+	}
+	return nil
 }

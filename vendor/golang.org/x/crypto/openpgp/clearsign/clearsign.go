@@ -13,6 +13,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto"
+	"fmt"
 	"hash"
 	"io"
 	"net/textproto"
@@ -35,7 +36,7 @@ type Block struct {
 // start is the marker which denotes the beginning of a clearsigned message.
 var start = []byte("\n-----BEGIN PGP SIGNED MESSAGE-----")
 
-// dashEscape is prefixed to any lines that begin with a hypen so that they
+// dashEscape is prefixed to any lines that begin with a hyphen so that they
 // can't be confused with endText.
 var dashEscape = []byte("- ")
 
@@ -118,6 +119,10 @@ func Decode(data []byte) (b *Block, rest []byte) {
 		start := rest
 
 		line, rest = getLine(rest)
+		if len(line) == 0 && len(rest) == 0 {
+			// No armored data was found, so this isn't a complete message.
+			return nil, data
+		}
 		if bytes.Equal(line, endText) {
 			// Back up to the start of the line because armor expects to see the
 			// header line.
@@ -173,8 +178,9 @@ func Decode(data []byte) (b *Block, rest []byte) {
 // message.
 type dashEscaper struct {
 	buffered *bufio.Writer
-	h        hash.Hash
+	hashers  []hash.Hash // one per key in privateKeys
 	hashType crypto.Hash
+	toHash   io.Writer // writes to all the hashes in hashers
 
 	atBeginningOfLine bool
 	isFirstLine       bool
@@ -182,8 +188,8 @@ type dashEscaper struct {
 	whitespace []byte
 	byteBuf    []byte // a one byte buffer to save allocations
 
-	privateKey *packet.PrivateKey
-	config     *packet.Config
+	privateKeys []*packet.PrivateKey
+	config      *packet.Config
 }
 
 func (d *dashEscaper) Write(data []byte) (n int, err error) {
@@ -194,10 +200,20 @@ func (d *dashEscaper) Write(data []byte) (n int, err error) {
 			// The final CRLF isn't included in the hash so we have to wait
 			// until this point (the start of the next line) before writing it.
 			if !d.isFirstLine {
-				d.h.Write(crlf)
+				d.toHash.Write(crlf)
 			}
 			d.isFirstLine = false
+		}
 
+		// Any whitespace at the end of the line has to be removed so we
+		// buffer it until we find out whether there's more on this line.
+		if b == ' ' || b == '\t' || b == '\r' {
+			d.whitespace = append(d.whitespace, b)
+			d.atBeginningOfLine = false
+			continue
+		}
+
+		if d.atBeginningOfLine {
 			// At the beginning of a line, hyphens have to be escaped.
 			if b == '-' {
 				// The signature isn't calculated over the dash-escaped text so
@@ -205,27 +221,23 @@ func (d *dashEscaper) Write(data []byte) (n int, err error) {
 				if _, err = d.buffered.Write(dashEscape); err != nil {
 					return
 				}
-				d.h.Write(d.byteBuf)
+				d.toHash.Write(d.byteBuf)
 				d.atBeginningOfLine = false
 			} else if b == '\n' {
-				// Nothing to do because we dely writing CRLF to the hash.
+				// Nothing to do because we delay writing CRLF to the hash.
 			} else {
-				d.h.Write(d.byteBuf)
+				d.toHash.Write(d.byteBuf)
 				d.atBeginningOfLine = false
 			}
 			if err = d.buffered.WriteByte(b); err != nil {
 				return
 			}
 		} else {
-			// Any whitespace at the end of the line has to be removed so we
-			// buffer it until we find out whether there's more on this line.
-			if b == ' ' || b == '\t' || b == '\r' {
-				d.whitespace = append(d.whitespace, b)
-			} else if b == '\n' {
+			if b == '\n' {
 				// We got a raw \n. Drop any trailing whitespace and write a
 				// CRLF.
 				d.whitespace = d.whitespace[:0]
-				// We dely writing CRLF to the hash until the start of the
+				// We delay writing CRLF to the hash until the start of the
 				// next line.
 				if err = d.buffered.WriteByte(b); err != nil {
 					return
@@ -235,13 +247,13 @@ func (d *dashEscaper) Write(data []byte) (n int, err error) {
 				// Any buffered whitespace wasn't at the end of the line so
 				// we need to write it out.
 				if len(d.whitespace) > 0 {
-					d.h.Write(d.whitespace)
+					d.toHash.Write(d.whitespace)
 					if _, err = d.buffered.Write(d.whitespace); err != nil {
 						return
 					}
 					d.whitespace = d.whitespace[:0]
 				}
-				d.h.Write(d.byteBuf)
+				d.toHash.Write(d.byteBuf)
 				if err = d.buffered.WriteByte(b); err != nil {
 					return
 				}
@@ -259,25 +271,29 @@ func (d *dashEscaper) Close() (err error) {
 			return
 		}
 	}
-	sig := new(packet.Signature)
-	sig.SigType = packet.SigTypeText
-	sig.PubKeyAlgo = d.privateKey.PubKeyAlgo
-	sig.Hash = d.hashType
-	sig.CreationTime = d.config.Now()
-	sig.IssuerKeyId = &d.privateKey.KeyId
-
-	if err = sig.Sign(d.h, d.privateKey, d.config); err != nil {
-		return
-	}
 
 	out, err := armor.Encode(d.buffered, "PGP SIGNATURE", nil)
 	if err != nil {
 		return
 	}
 
-	if err = sig.Serialize(out); err != nil {
-		return
+	t := d.config.Now()
+	for i, k := range d.privateKeys {
+		sig := new(packet.Signature)
+		sig.SigType = packet.SigTypeText
+		sig.PubKeyAlgo = k.PubKeyAlgo
+		sig.Hash = d.hashType
+		sig.CreationTime = t
+		sig.IssuerKeyId = &k.KeyId
+
+		if err = sig.Sign(d.hashers[i], k, d.config); err != nil {
+			return
+		}
+		if err = sig.Serialize(out); err != nil {
+			return
+		}
 	}
+
 	if err = out.Close(); err != nil {
 		return
 	}
@@ -290,8 +306,17 @@ func (d *dashEscaper) Close() (err error) {
 // Encode returns a WriteCloser which will clear-sign a message with privateKey
 // and write it to w. If config is nil, sensible defaults are used.
 func Encode(w io.Writer, privateKey *packet.PrivateKey, config *packet.Config) (plaintext io.WriteCloser, err error) {
-	if privateKey.Encrypted {
-		return nil, errors.InvalidArgumentError("signing key is encrypted")
+	return EncodeMulti(w, []*packet.PrivateKey{privateKey}, config)
+}
+
+// EncodeMulti returns a WriteCloser which will clear-sign a message with all the
+// private keys indicated and write it to w. If config is nil, sensible defaults
+// are used.
+func EncodeMulti(w io.Writer, privateKeys []*packet.PrivateKey, config *packet.Config) (plaintext io.WriteCloser, err error) {
+	for _, k := range privateKeys {
+		if k.Encrypted {
+			return nil, errors.InvalidArgumentError(fmt.Sprintf("signing key %s is encrypted", k.KeyIdString()))
+		}
 	}
 
 	hashType := config.Hash()
@@ -303,7 +328,14 @@ func Encode(w io.Writer, privateKey *packet.PrivateKey, config *packet.Config) (
 	if !hashType.Available() {
 		return nil, errors.UnsupportedError("unsupported hash type: " + strconv.Itoa(int(hashType)))
 	}
-	h := hashType.New()
+	var hashers []hash.Hash
+	var ws []io.Writer
+	for range privateKeys {
+		h := hashType.New()
+		hashers = append(hashers, h)
+		ws = append(ws, h)
+	}
+	toHash := io.MultiWriter(ws...)
 
 	buffered := bufio.NewWriter(w)
 	// start has a \n at the beginning that we don't want here.
@@ -328,16 +360,17 @@ func Encode(w io.Writer, privateKey *packet.PrivateKey, config *packet.Config) (
 
 	plaintext = &dashEscaper{
 		buffered: buffered,
-		h:        h,
+		hashers:  hashers,
 		hashType: hashType,
+		toHash:   toHash,
 
 		atBeginningOfLine: true,
 		isFirstLine:       true,
 
 		byteBuf: make([]byte, 1),
 
-		privateKey: privateKey,
-		config:     config,
+		privateKeys: privateKeys,
+		config:      config,
 	}
 
 	return

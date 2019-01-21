@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -18,6 +19,7 @@ import (
 type privKey struct {
 	signer  ssh.Signer
 	comment string
+	expire  *time.Time
 }
 
 type keyring struct {
@@ -48,21 +50,15 @@ func (r *keyring) RemoveAll() error {
 	return nil
 }
 
-// Remove removes all identities with the given public key.
-func (r *keyring) Remove(key ssh.PublicKey) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.locked {
-		return errLocked
-	}
-
-	want := key.Marshal()
+// removeLocked does the actual key removal. The caller must already be holding the
+// keyring mutex.
+func (r *keyring) removeLocked(want []byte) error {
 	found := false
 	for i := 0; i < len(r.keys); {
 		if bytes.Equal(r.keys[i].signer.PublicKey().Marshal(), want) {
 			found = true
 			r.keys[i] = r.keys[len(r.keys)-1]
-			r.keys = r.keys[len(r.keys)-1:]
+			r.keys = r.keys[:len(r.keys)-1]
 			continue
 		} else {
 			i++
@@ -75,7 +71,18 @@ func (r *keyring) Remove(key ssh.PublicKey) error {
 	return nil
 }
 
-// Lock locks the agent. Sign and Remove will fail, and List will empty an empty list.
+// Remove removes all identities with the given public key.
+func (r *keyring) Remove(key ssh.PublicKey) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.locked {
+		return errLocked
+	}
+
+	return r.removeLocked(key.Marshal())
+}
+
+// Lock locks the agent. Sign and Remove will fail, and List will return an empty list.
 func (r *keyring) Lock(passphrase []byte) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -95,13 +102,24 @@ func (r *keyring) Unlock(passphrase []byte) error {
 	if !r.locked {
 		return errors.New("agent: not locked")
 	}
-	if len(passphrase) != len(r.passphrase) || 1 != subtle.ConstantTimeCompare(passphrase, r.passphrase) {
+	if 1 != subtle.ConstantTimeCompare(passphrase, r.passphrase) {
 		return fmt.Errorf("agent: incorrect passphrase")
 	}
 
 	r.locked = false
 	r.passphrase = nil
 	return nil
+}
+
+// expireKeysLocked removes expired keys from the keyring. If a key was added
+// with a lifetimesecs contraint and seconds >= lifetimesecs seconds have
+// ellapsed, it is removed. The caller *must* be holding the keyring mutex.
+func (r *keyring) expireKeysLocked() {
+	for _, k := range r.keys {
+		if k.expire != nil && time.Now().After(*k.expire) {
+			r.removeLocked(k.signer.PublicKey().Marshal())
+		}
+	}
 }
 
 // List returns the identities known to the agent.
@@ -113,6 +131,7 @@ func (r *keyring) List() ([]*Key, error) {
 		return nil, nil
 	}
 
+	r.expireKeysLocked()
 	var ids []*Key
 	for _, k := range r.keys {
 		pub := k.signer.PublicKey()
@@ -125,43 +144,76 @@ func (r *keyring) List() ([]*Key, error) {
 }
 
 // Insert adds a private key to the keyring. If a certificate
-// is given, that certificate is added as public key.
-func (r *keyring) Add(priv interface{}, cert *ssh.Certificate, comment string) error {
+// is given, that certificate is added as public key. Note that
+// any constraints given are ignored.
+func (r *keyring) Add(key AddedKey) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.locked {
 		return errLocked
 	}
-	signer, err := ssh.NewSignerFromKey(priv)
+	signer, err := ssh.NewSignerFromKey(key.PrivateKey)
 
 	if err != nil {
 		return err
 	}
 
-	if cert != nil {
+	if cert := key.Certificate; cert != nil {
 		signer, err = ssh.NewCertSigner(cert, signer)
 		if err != nil {
 			return err
 		}
 	}
 
-	r.keys = append(r.keys, privKey{signer, comment})
+	p := privKey{
+		signer:  signer,
+		comment: key.Comment,
+	}
+
+	if key.LifetimeSecs > 0 {
+		t := time.Now().Add(time.Duration(key.LifetimeSecs) * time.Second)
+		p.expire = &t
+	}
+
+	r.keys = append(r.keys, p)
 
 	return nil
 }
 
 // Sign returns a signature for the data.
 func (r *keyring) Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error) {
+	return r.SignWithFlags(key, data, 0)
+}
+
+func (r *keyring) SignWithFlags(key ssh.PublicKey, data []byte, flags SignatureFlags) (*ssh.Signature, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.locked {
 		return nil, errLocked
 	}
 
+	r.expireKeysLocked()
 	wanted := key.Marshal()
 	for _, k := range r.keys {
 		if bytes.Equal(k.signer.PublicKey().Marshal(), wanted) {
-			return k.signer.Sign(rand.Reader, data)
+			if flags == 0 {
+				return k.signer.Sign(rand.Reader, data)
+			} else {
+				if algorithmSigner, ok := k.signer.(ssh.AlgorithmSigner); !ok {
+					return nil, fmt.Errorf("agent: signature does not support non-default signature algorithm: %T", k.signer)
+				} else {
+					var algorithm string
+					switch flags {
+					case SignatureFlagRsaSha256:
+						algorithm = ssh.SigAlgoRSASHA2256
+					case SignatureFlagRsaSha512:
+						algorithm = ssh.SigAlgoRSASHA2512
+					default:
+						return nil, fmt.Errorf("agent: unsupported signature flags: %d", flags)
+					}
+					return algorithmSigner.SignWithAlgorithm(rand.Reader, data, algorithm)
+				}
+			}
 		}
 	}
 	return nil, errors.New("not found")
@@ -175,9 +227,15 @@ func (r *keyring) Signers() ([]ssh.Signer, error) {
 		return nil, errLocked
 	}
 
+	r.expireKeysLocked()
 	s := make([]ssh.Signer, 0, len(r.keys))
 	for _, k := range r.keys {
 		s = append(s, k.signer)
 	}
 	return s, nil
+}
+
+// The keyring does not support any extensions
+func (r *keyring) Extension(extensionType string, contents []byte) ([]byte, error) {
+	return nil, ErrExtensionUnsupported
 }

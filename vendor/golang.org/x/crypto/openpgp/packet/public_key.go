@@ -16,13 +16,14 @@ import (
 	_ "crypto/sha512"
 	"encoding/binary"
 	"fmt"
-	"golang.org/x/crypto/openpgp/elgamal"
-	"golang.org/x/crypto/openpgp/errors"
 	"hash"
 	"io"
 	"math/big"
 	"strconv"
 	"time"
+
+	"golang.org/x/crypto/openpgp/elgamal"
+	"golang.org/x/crypto/openpgp/errors"
 )
 
 var (
@@ -192,7 +193,7 @@ func NewRSAPublicKey(creationTime time.Time, pub *rsa.PublicKey) *PublicKey {
 	return pk
 }
 
-// NewDSAPublicKey returns a PublicKey that wraps the given rsa.PublicKey.
+// NewDSAPublicKey returns a PublicKey that wraps the given dsa.PublicKey.
 func NewDSAPublicKey(creationTime time.Time, pub *dsa.PublicKey) *PublicKey {
 	pk := &PublicKey{
 		CreationTime: creationTime,
@@ -203,6 +204,52 @@ func NewDSAPublicKey(creationTime time.Time, pub *dsa.PublicKey) *PublicKey {
 		g:            fromBig(pub.G),
 		y:            fromBig(pub.Y),
 	}
+
+	pk.setFingerPrintAndKeyId()
+	return pk
+}
+
+// NewElGamalPublicKey returns a PublicKey that wraps the given elgamal.PublicKey.
+func NewElGamalPublicKey(creationTime time.Time, pub *elgamal.PublicKey) *PublicKey {
+	pk := &PublicKey{
+		CreationTime: creationTime,
+		PubKeyAlgo:   PubKeyAlgoElGamal,
+		PublicKey:    pub,
+		p:            fromBig(pub.P),
+		g:            fromBig(pub.G),
+		y:            fromBig(pub.Y),
+	}
+
+	pk.setFingerPrintAndKeyId()
+	return pk
+}
+
+func NewECDSAPublicKey(creationTime time.Time, pub *ecdsa.PublicKey) *PublicKey {
+	pk := &PublicKey{
+		CreationTime: creationTime,
+		PubKeyAlgo:   PubKeyAlgoECDSA,
+		PublicKey:    pub,
+		ec:           new(ecdsaKey),
+	}
+
+	switch pub.Curve {
+	case elliptic.P256():
+		pk.ec.oid = oidCurveP256
+	case elliptic.P384():
+		pk.ec.oid = oidCurveP384
+	case elliptic.P521():
+		pk.ec.oid = oidCurveP521
+	default:
+		panic("unknown elliptic curve")
+	}
+
+	pk.ec.p.bytes = elliptic.Marshal(pub.Curve, pub.X, pub.Y)
+
+	// The bit length is 3 (for the 0x04 specifying an uncompressed key)
+	// plus two field elements (for x and y), which are rounded up to the
+	// nearest byte. See https://tools.ietf.org/html/rfc6637#section-6
+	fieldBytes := (pub.Curve.Params().BitSize + 7) & ^7
+	pk.ec.p.bitLength = uint16(3 + fieldBytes + fieldBytes)
 
 	pk.setFingerPrintAndKeyId()
 	return pk
@@ -473,7 +520,7 @@ func (pk *PublicKey) VerifySignature(signed hash.Hash, sig *Signature) (err erro
 	switch pk.PubKeyAlgo {
 	case PubKeyAlgoRSA, PubKeyAlgoRSASignOnly:
 		rsaPublicKey, _ := pk.PublicKey.(*rsa.PublicKey)
-		err = rsa.VerifyPKCS1v15(rsaPublicKey, sig.Hash, hashBytes, sig.RSASignature.bytes)
+		err = rsa.VerifyPKCS1v15(rsaPublicKey, sig.Hash, hashBytes, padToKeySize(rsaPublicKey, sig.RSASignature.bytes))
 		if err != nil {
 			return errors.SignatureError("RSA verification failure")
 		}
@@ -498,7 +545,6 @@ func (pk *PublicKey) VerifySignature(signed hash.Hash, sig *Signature) (err erro
 	default:
 		return errors.SignatureError("Unsupported public key algorithm used in signature")
 	}
-	panic("unreachable")
 }
 
 // VerifySignatureV3 returns nil iff sig is a valid signature, made by this
@@ -525,7 +571,7 @@ func (pk *PublicKey) VerifySignatureV3(signed hash.Hash, sig *SignatureV3) (err 
 	switch pk.PubKeyAlgo {
 	case PubKeyAlgoRSA, PubKeyAlgoRSASignOnly:
 		rsaPublicKey := pk.PublicKey.(*rsa.PublicKey)
-		if err = rsa.VerifyPKCS1v15(rsaPublicKey, sig.Hash, hashBytes, sig.RSASignature.bytes); err != nil {
+		if err = rsa.VerifyPKCS1v15(rsaPublicKey, sig.Hash, hashBytes, padToKeySize(rsaPublicKey, sig.RSASignature.bytes)); err != nil {
 			return errors.SignatureError("RSA verification failure")
 		}
 		return
@@ -543,7 +589,6 @@ func (pk *PublicKey) VerifySignatureV3(signed hash.Hash, sig *SignatureV3) (err 
 	default:
 		panic("shouldn't happen")
 	}
-	panic("unreachable")
 }
 
 // keySignatureHash returns a Hash of the message that needs to be signed for
@@ -564,12 +609,33 @@ func keySignatureHash(pk, signed signingKey, hashFunc crypto.Hash) (h hash.Hash,
 
 // VerifyKeySignature returns nil iff sig is a valid signature, made by this
 // public key, of signed.
-func (pk *PublicKey) VerifyKeySignature(signed *PublicKey, sig *Signature) (err error) {
+func (pk *PublicKey) VerifyKeySignature(signed *PublicKey, sig *Signature) error {
 	h, err := keySignatureHash(pk, signed, sig.Hash)
 	if err != nil {
 		return err
 	}
-	return pk.VerifySignature(h, sig)
+	if err = pk.VerifySignature(h, sig); err != nil {
+		return err
+	}
+
+	if sig.FlagSign {
+		// Signing subkeys must be cross-signed. See
+		// https://www.gnupg.org/faq/subkey-cross-certify.html.
+		if sig.EmbeddedSignature == nil {
+			return errors.StructuralError("signing subkey is missing cross-signature")
+		}
+		// Verify the cross-signature. This is calculated over the same
+		// data as the main signature, so we cannot just recursively
+		// call signed.VerifyKeySignature(...)
+		if h, err = keySignatureHash(pk, signed, sig.EmbeddedSignature.Hash); err != nil {
+			return errors.StructuralError("error while hashing for cross-signature: " + err.Error())
+		}
+		if err := signed.VerifySignature(h, sig.EmbeddedSignature); err != nil {
+			return errors.StructuralError("error while verifying cross-signature: " + err.Error())
+		}
+	}
+
+	return nil
 }
 
 func keyRevocationHash(pk signingKey, hashFunc crypto.Hash) (h hash.Hash, err error) {
