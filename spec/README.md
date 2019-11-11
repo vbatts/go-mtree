@@ -15,3 +15,4 @@ Options are:
 
 ## manifest format
 
+TODO: document the old bsd, new bsd, and the extensions done in go-mtree
