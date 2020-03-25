@@ -161,10 +161,10 @@ func (k KeyDelta) Old() *string {
 
 // New returns the value of the KeyDeltaVal entry in the "new" DirectoryHierarchy
 // (as determined by the ordering of parameters to Compare). Returns nil if
-// there was no entry in the "old" DirectoryHierarchy.
+// there was no entry in the "new" DirectoryHierarchy.
 func (k KeyDelta) New() *string {
 	if k.diff == Modified || k.diff == Extra {
-		return sPtr(k.old)
+		return sPtr(k.new)
 	}
 	return nil
 }
