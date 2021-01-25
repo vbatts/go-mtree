@@ -34,7 +34,7 @@ lint: .lint
 CLEAN_FILES += .lint
 
 .lint: $(SOURCE_FILES)
-	@if [[ "$(findstring $(GO_VER),$(shell go version))" != "" ]] ; then \
+	@if [ "$(findstring $(GO_VER),$(shell go version))" != "" ] ; then \
 		set -e ; for dir in $(NO_VENDOR_DIR) ; do golint -set_exit_status $$dir ; done && touch $@ \
 	else \
 		touch $@ ; \
@@ -70,7 +70,7 @@ $(BUILD): $(SOURCE_FILES)
 
 install.tools:
 	@go get -u github.com/fatih/color ; \
-	if [[ "$(findstring $(GO_VER),$(shell go version))" != "" ]] ; then \
+	if [ "$(findstring $(GO_VER),$(shell go version))" != "" ] ; then \
 		go get -u golang.org/x/lint/golint ;\
 	fi
 
