@@ -4,8 +4,7 @@ go 1.13
 
 require (
 	github.com/davecgh/go-spew v1.1.1
-	github.com/fatih/color v1.12.0 // indirect
-	github.com/sirupsen/logrus v1.7.0
-	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
-	golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c
+	github.com/sirupsen/logrus v1.8.1
+	golang.org/x/crypto v0.0.0-20220331220935-ae2d96664a29
+	golang.org/x/sys v0.0.0-20220403205710-6acee93ad0eb
 )
