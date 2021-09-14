@@ -66,7 +66,7 @@ CLEAN_FILES += .cli.test .cli.test.tags
 build: $(BUILD)
 
 $(BUILD): $(SOURCE_FILES)
-	go build -o $(BUILD) $(BUILDPATH)
+	go build -mod=vendor -o $(BUILD) $(BUILDPATH)
 
 install.tools:
 	@go get -u github.com/fatih/color ; \
@@ -85,7 +85,7 @@ build.arches: ./bin
 	p=$$(echo $$pair | cut -d , -f 1);\
 	a=$$(echo $$pair | cut -d , -f 2);\
 	echo "Building $$p/$$a ...";\
-	GOOS=$$p GOARCH=$$a go build -o ./bin/gomtree.$$p.$$a $(BUILDPATH) ;\
+	GOOS=$$p GOARCH=$$a go build -mod=vendor -o ./bin/gomtree.$$p.$$a $(BUILDPATH) ;\
 	done
 
 clean:
