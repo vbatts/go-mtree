@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -11,51 +10,100 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
+	cli "github.com/urfave/cli/v2"
 	"github.com/vbatts/go-mtree"
 )
 
-var (
-	// Flags common with mtree(8)
-	flCreate           = flag.Bool("c", false, "create a directory hierarchy spec")
-	flFile             = flag.String("f", "", "directory hierarchy spec to validate")
-	flPath             = flag.String("p", "", "root path that the hierarchy spec is relative to")
-	flAddKeywords      = flag.String("K", "", "Add the specified (delimited by comma or space) keywords to the current set of keywords")
-	flUseKeywords      = flag.String("k", "", "Use the specified (delimited by comma or space) keywords as the current set of keywords")
-	flDirectoryOnly    = flag.Bool("d", false, "Ignore everything except directory type files")
-	flUpdateAttributes = flag.Bool("u", false, "Modify the owner, group, permissions and xattrs of files, symbolic links and devices, to match the provided specification. This is not compatible with '-T'.")
-
-	// Flags unique to gomtree
-	flListKeywords     = flag.Bool("list-keywords", false, "List the keywords available")
-	flResultFormat     = flag.String("result-format", "bsd", "output the validation results using the given format (bsd, json, path)")
-	flTar              = flag.String("T", "", "use tar archive to create or validate a directory hierarchy spec (\"-\" indicates stdin)")
-	flBsdKeywords      = flag.Bool("bsd-keywords", false, "only operate on keywords that are supported by upstream mtree(8)")
-	flListUsedKeywords = flag.Bool("list-used", false, "list all the keywords found in a validation manifest")
-	flDebug            = flag.Bool("debug", false, "output debug info to STDERR")
-	flVersion          = flag.Bool("version", false, "display the version of this tool")
-)
-
 func main() {
-	// so that defers cleanly exec
-	if err := app(); err != nil {
+	app := cli.NewApp()
+	app.Name = mtree.AppName
+	app.Usage = "map a directory hierarchy"
+	app.Version = mtree.Version
+	// cli docs --> https://github.com/urfave/cli/blob/master/docs/v2/manual.md
+	app.Flags = []cli.Flag{
+		// Flags common with mtree(8)
+		&cli.BoolFlag{
+			Name:    "create",
+			Aliases: []string{"c"},
+			Usage:   "Create a directory hierarchy spec",
+		},
+		&cli.StringFlag{
+			Name:    "file",
+			Aliases: []string{"f"},
+			Usage:   "Directory hierarchy spec to validate",
+		},
+		&cli.StringFlag{
+			Name:    "path",
+			Aliases: []string{"p"},
+			Usage:   "Root path that the hierarchy spec is relative to",
+		},
+		&cli.StringFlag{
+			Name:    "add-keywords",
+			Aliases: []string{"K"},
+			Usage:   "Add the specified (delimited by comma or space) keywords to the current set of keywords",
+		},
+		&cli.StringFlag{
+			Name:    "use-keywords",
+			Aliases: []string{"k"},
+			Usage:   "Use only the specified (delimited by comma or space) keywords as the current set of keywords",
+		},
+		&cli.BoolFlag{
+			Name:    "directory-only",
+			Aliases: []string{"d"},
+			Usage:   "Ignore everything except directory type files",
+		},
+		&cli.BoolFlag{
+			Name:    "update-attributes",
+			Aliases: []string{"u"},
+			Usage:   "Modify the owner, group, permissions and xattrs of files, symbolic links and devices, to match the provided specification. This is not compatible with '-T'.",
+		},
+
+		// Flags unique to gomtree
+		&cli.BoolFlag{
+			Name:  "debug",
+			Usage: "Output debug info to STDERR",
+			Value: false,
+		},
+		&cli.BoolFlag{
+			Name:  "list-keywords",
+			Usage: "List the keywords available",
+		},
+		&cli.BoolFlag{
+			Name:  "list-used",
+			Usage: "List all the keywords found in a validation manifest",
+		},
+		&cli.BoolFlag{
+			Name:  "bsd-keywords",
+			Usage: "Only operate on keywords that are supported by upstream mtree(8)",
+		},
+		&cli.StringFlag{
+			Name:    "tar",
+			Aliases: []string{"T"},
+			Value:   "",
+			Usage:   `Use tar archive to create or validate a directory hierarchy spec ("-" indicates stdin)`,
+		},
+		&cli.StringFlag{
+			Name:  "result-format",
+			Value: "bsd",
+			Usage: "output the validation results using the given format (bsd, json, path)",
+		},
+	}
+	app.Action = func(c *cli.Context) error {
+		return mainApp(c)
+	}
+	if err := app.Run(os.Args); err != nil {
 		logrus.Fatal(err)
 	}
 }
 
-func app() error {
-	flag.Parse()
-
-	if *flDebug {
+func mainApp(c *cli.Context) error {
+	if c.Bool("debug") {
 		os.Setenv("DEBUG", "1")
 		logrus.SetLevel(logrus.DebugLevel)
 	}
 
-	if *flVersion {
-		fmt.Printf("%s :: %s\n", mtree.AppName, mtree.Version)
-		return nil
-	}
-
 	// -list-keywords
-	if *flListKeywords {
+	if c.Bool("list-keywords") {
 		fmt.Println("Available keywords:")
 		for k := range mtree.KeywordFuncs {
 			fmt.Print(" ")
@@ -72,9 +120,9 @@ func app() error {
 	}
 
 	// --result-format
-	formatFunc, ok := formats[*flResultFormat]
+	formatFunc, ok := formats[c.String("result-format")]
 	if !ok {
-		return fmt.Errorf("invalid output format: %s", *flResultFormat)
+		return fmt.Errorf("invalid output format: %s", c.String("result-format"))
 	}
 
 	var (
@@ -84,13 +132,13 @@ func app() error {
 	)
 
 	// -k <keywords>
-	if *flUseKeywords != "" {
-		tmpKeywords = splitKeywordsArg(*flUseKeywords)
+	if c.String("use-keywords") != "" {
+		tmpKeywords = splitKeywordsArg(c.String("use-keywords"))
 		if !mtree.InKeywordSlice("type", tmpKeywords) {
 			tmpKeywords = append([]mtree.Keyword{"type"}, tmpKeywords...)
 		}
 	} else {
-		if *flTar != "" {
+		if c.String("tar") != "" {
 			tmpKeywords = mtree.DefaultTarKeywords[:]
 		} else {
 			tmpKeywords = mtree.DefaultKeywords[:]
@@ -98,8 +146,8 @@ func app() error {
 	}
 
 	// -K <keywords>
-	if *flAddKeywords != "" {
-		for _, kw := range splitKeywordsArg(*flAddKeywords) {
+	if c.String("add-keywords") != "" {
+		for _, kw := range splitKeywordsArg(c.String("add-keywords")) {
 			if !mtree.InKeywordSlice(kw, tmpKeywords) {
 				tmpKeywords = append(tmpKeywords, kw)
 			}
@@ -107,7 +155,7 @@ func app() error {
 	}
 
 	// -bsd-keywords
-	if *flBsdKeywords {
+	if c.Bool("bsd-keywords") {
 		for _, k := range tmpKeywords {
 			if mtree.Keyword(k).Bsd() {
 				currentKeywords = append(currentKeywords, k)
@@ -134,9 +182,9 @@ func app() error {
 	)
 
 	// -f <file>
-	if *flFile != "" && !*flCreate {
+	if c.String("file") != "" && !c.Bool("create") {
 		// load the hierarchy, if we're not creating a new spec
-		fh, err := os.Open(*flFile)
+		fh, err := os.Open(c.String("file"))
 		if err != nil {
 			return err
 		}
@@ -152,21 +200,21 @@ func app() error {
 	}
 
 	// -list-used
-	if *flListUsedKeywords {
+	if c.Bool("list-used") {
 		if specDh == nil {
 			return fmt.Errorf("no specification provided. please provide a validation manifest")
 		}
 
-		if *flResultFormat == "json" {
+		if c.String("result-format") == "json" {
 			// if they're asking for json, give it to them
-			data := map[string][]mtree.Keyword{*flFile: specKeywords}
+			data := map[string][]mtree.Keyword{c.String("file"): specKeywords}
 			buf, err := json.MarshalIndent(data, "", "  ")
 			if err != nil {
 				return err
 			}
 			fmt.Println(string(buf))
 		} else {
-			fmt.Printf("Keywords used in [%s]:\n", *flFile)
+			fmt.Printf("Keywords used in [%s]:\n", c.String("file"))
 			for _, kw := range specKeywords {
 				fmt.Printf(" %s", kw)
 				if _, ok := mtree.KeywordFuncs[kw]; !ok {
@@ -180,7 +228,7 @@ func app() error {
 
 	if specKeywords != nil {
 		// If we didn't actually change the set of keywords, we can just use specKeywords.
-		if *flUseKeywords == "" && *flAddKeywords == "" {
+		if c.String("use-keywords") == "" && c.String("add-keywords") == "" {
 			currentKeywords = specKeywords
 		}
 
@@ -194,35 +242,35 @@ func app() error {
 	}
 
 	// -p and -T are mutually exclusive
-	if *flPath != "" && *flTar != "" {
+	if c.String("path") != "" && c.String("tar") != "" {
 		return fmt.Errorf("options -T and -p are mutually exclusive")
 	}
 
 	// -p <path>
 	var rootPath = "."
-	if *flPath != "" {
-		rootPath = *flPath
+	if c.String("path") != "" {
+		rootPath = c.String("path")
 	}
 
 	excludes := []mtree.ExcludeFunc{}
 	// -d
-	if *flDirectoryOnly {
+	if c.Bool("directory-only") {
 		excludes = append(excludes, mtree.ExcludeNonDirectories)
 	}
 
 	// -u
 	// Failing early here. Processing is done below.
-	if *flUpdateAttributes && *flTar != "" {
+	if c.Bool("update-attributes") && c.String("tar") != "" {
 		return fmt.Errorf("ERROR: -u can not be used with -T")
 	}
 
 	// -T <tar file>
-	if *flTar != "" {
+	if c.String("tar") != "" {
 		var input io.Reader
-		if *flTar == "-" {
+		if c.String("tar") == "-" {
 			input = os.Stdin
 		} else {
-			fh, err := os.Open(*flTar)
+			fh, err := os.Open(c.String("tar"))
 			if err != nil {
 				return err
 			}
@@ -251,7 +299,7 @@ func app() error {
 	}
 
 	// -u
-	if *flUpdateAttributes && stateDh != nil {
+	if c.Bool("update-attributes") && stateDh != nil {
 		// -u
 		// this comes before the next case, intentionally.
 		result, err := mtree.Update(rootPath, specDh, mtree.DefaultUpdateKeywords, nil)
@@ -288,10 +336,10 @@ func app() error {
 	}
 
 	// -c
-	if *flCreate {
+	if c.Bool("create") {
 		fh := os.Stdout
-		if *flFile != "" {
-			fh, err = os.Create(*flFile)
+		if c.String("file") != "" {
+			fh, err = os.Create(c.String("file"))
 			if err != nil {
 				return err
 			}
@@ -323,7 +371,7 @@ func app() error {
 			return err
 		}
 		if res != nil {
-			if isTarSpec(specDh) || *flTar != "" {
+			if isTarSpec(specDh) || c.String("tar") != "" {
 				res = filterMissingKeywords(res)
 			}
 
