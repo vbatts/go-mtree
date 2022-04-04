@@ -279,7 +279,7 @@ func app() error {
 			//       unsafe IMO.
 			for _, diff := range res {
 				if diff.Type() == mtree.Modified {
-					return fmt.Errorf("mainfest validation failed")
+					return fmt.Errorf("manifest validation failed")
 				}
 			}
 		}
@@ -337,7 +337,7 @@ func app() error {
 			//       unsafe IMO.
 			for _, diff := range res {
 				if diff.Type() == mtree.Modified {
-					return fmt.Errorf("mainfest validation failed")
+					return fmt.Errorf("manifest validation failed")
 				}
 			}
 		}

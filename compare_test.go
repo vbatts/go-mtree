@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// simple walk of current directory, and imediately check it.
+// simple walk of current directory, and immediately check it.
 // may not be parallelizable.
 func TestCompare(t *testing.T) {
 	old, err := Walk(".", nil, append(DefaultKeywords, "sha1"), nil)

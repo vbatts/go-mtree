@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package mtree
@@ -15,7 +16,7 @@ import (
 func TestXattr(t *testing.T) {
 	testDir, present := os.LookupEnv("MTREE_TESTDIR")
 	if present == false {
-		// a bit dirty to create/destory a directory in cwd,
+		// a bit dirty to create/destroy a directory in cwd,
 		// but often /tmp is mounted tmpfs and doesn't support
 		// xattrs
 		testDir = "."

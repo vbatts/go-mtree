@@ -17,7 +17,7 @@ func init() {
 
 func TestXattrUpdate(t *testing.T) {
 	content := []byte("I know half of you half as well as I ought to")
-	// a bit dirty to create/destory a directory in cwd, but often /tmp is
+	// a bit dirty to create/destroy a directory in cwd, but often /tmp is
 	// mounted tmpfs and doesn't support xattrs
 	dir, err := ioutil.TempDir(".", "test.xattr.restore.")
 	if err != nil {
