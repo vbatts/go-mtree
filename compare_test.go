@@ -90,8 +90,6 @@ func TestCompareModified(t *testing.T) {
 	}
 
 	// These cannot fail.
-	tmpfile, _ = filepath.Rel(dir, tmpfile)
-	tmpdir, _ = filepath.Rel(dir, tmpdir)
 	tmpsubfile, _ = filepath.Rel(dir, tmpsubfile)
 
 	for _, diff := range diffs {
