@@ -294,6 +294,17 @@ func mainApp(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
+	} else if len(c.StringSlice("file")) > 1 {
+		// load this second hierarchy file provided
+		fh, err := os.Open(c.StringSlice("file")[1])
+		if err != nil {
+			return err
+		}
+		stateDh, err = mtree.ParseSpec(fh)
+		fh.Close()
+		if err != nil {
+			return err
+		}
 	} else {
 		// with a root directory
 		stateDh, err = mtree.Walk(rootPath, excludes, currentKeywords, nil)
