@@ -1,5 +1,6 @@
 # go-mtree
 
+[![Go](https://github.com/vbatts/go-mtree/actions/workflows/go.yml/badge.svg)](https://github.com/vbatts/go-mtree/actions/workflows/go.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/vbatts/go-mtree)](https://goreportcard.com/report/github.com/vbatts/go-mtree)
 
 `mtree` is a filesystem hierarchy validation tooling and format.
