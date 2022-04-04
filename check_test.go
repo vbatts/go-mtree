@@ -273,6 +273,9 @@ func TestIgnoreComments(t *testing.T) {
 ..
 `
 	dh, err = ParseSpec(bytes.NewBufferString(spec))
+	if err != nil {
+		t.Error(err)
+	}
 
 	res, err = Check(dir, dh, nil, nil)
 	if err != nil {

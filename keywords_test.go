@@ -39,7 +39,6 @@ func TestKeyValRoundtrip(t *testing.T) {
 		t.Errorf("expected %q; got %q", expected, got)
 	}
 
-	expected = "xattr.security.selinux=farts"
 	kv1 := KeyVal(got)
 	kv2 := kv.NewValue("farts")
 	if !kv2.Equal(kv1) {
