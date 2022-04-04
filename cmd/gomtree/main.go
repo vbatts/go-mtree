@@ -258,7 +258,7 @@ func app() error {
 		if err != nil {
 			return err
 		}
-		if result != nil && len(result) > 0 {
+		if len(result) > 0 {
 			fmt.Printf("%#v\n", result)
 		}
 
