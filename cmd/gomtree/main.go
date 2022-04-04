@@ -27,7 +27,7 @@ func main() {
 			Aliases: []string{"c"},
 			Usage:   "Create a directory hierarchy spec",
 		},
-		&cli.StringFlag{
+		&cli.StringSliceFlag{
 			Name:    "file",
 			Aliases: []string{"f"},
 			Usage:   "Directory hierarchy spec to validate",
@@ -182,9 +182,9 @@ func mainApp(c *cli.Context) error {
 	)
 
 	// -f <file>
-	if c.String("file") != "" && !c.Bool("create") {
+	if len(c.StringSlice("file")) > 0 && !c.Bool("create") {
 		// load the hierarchy, if we're not creating a new spec
-		fh, err := os.Open(c.String("file"))
+		fh, err := os.Open(c.StringSlice("file")[0])
 		if err != nil {
 			return err
 		}
@@ -206,21 +206,25 @@ func mainApp(c *cli.Context) error {
 		}
 
 		if c.String("result-format") == "json" {
-			// if they're asking for json, give it to them
-			data := map[string][]mtree.Keyword{c.String("file"): specKeywords}
-			buf, err := json.MarshalIndent(data, "", "  ")
-			if err != nil {
-				return err
-			}
-			fmt.Println(string(buf))
-		} else {
-			fmt.Printf("Keywords used in [%s]:\n", c.String("file"))
-			for _, kw := range specKeywords {
-				fmt.Printf(" %s", kw)
-				if _, ok := mtree.KeywordFuncs[kw]; !ok {
-					fmt.Print(" (unsupported)")
+			for _, file := range c.StringSlice("file") {
+				// if they're asking for json, give it to them
+				data := map[string][]mtree.Keyword{file: specKeywords}
+				buf, err := json.MarshalIndent(data, "", "  ")
+				if err != nil {
+					return err
 				}
-				fmt.Printf("\n")
+				fmt.Println(string(buf))
+			}
+		} else {
+			for _, file := range c.StringSlice("file") {
+				fmt.Printf("Keywords used in [%s]:\n", file)
+				for _, kw := range specKeywords {
+					fmt.Printf(" %s", kw)
+					if _, ok := mtree.KeywordFuncs[kw]; !ok {
+						fmt.Print(" (unsupported)")
+					}
+					fmt.Printf("\n")
+				}
 			}
 		}
 		return nil
@@ -290,6 +294,17 @@ func mainApp(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
+	} else if len(c.StringSlice("file")) > 1 {
+		// load this second hierarchy file provided
+		fh, err := os.Open(c.StringSlice("file")[1])
+		if err != nil {
+			return err
+		}
+		stateDh, err = mtree.ParseSpec(fh)
+		fh.Close()
+		if err != nil {
+			return err
+		}
 	} else {
 		// with a root directory
 		stateDh, err = mtree.Walk(rootPath, excludes, currentKeywords, nil)
@@ -338,8 +353,8 @@ func mainApp(c *cli.Context) error {
 	// -c
 	if c.Bool("create") {
 		fh := os.Stdout
-		if c.String("file") != "" {
-			fh, err = os.Create(c.String("file"))
+		if len(c.StringSlice("file")) > 0 {
+			fh, err = os.Create(c.StringSlice("file")[0])
 			if err != nil {
 				return err
 			}
