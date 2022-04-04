@@ -3,7 +3,7 @@ set -e
 
 name=$(basename $0)
 root="$(dirname $(dirname $(dirname $0)))"
-gomtree=$(go run ${root}/test/realpath.go ${root}/gomtree)
+gomtree=$(go run ${root}/test/realpath/main.go ${root}/gomtree)
 t=$(mktemp -d -t go-mtree.XXXXXX)
 
 setfattr -n user.has.xattrs -v "true" "${t}"  || exit 0

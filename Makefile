@@ -57,10 +57,10 @@ cli.test: .cli.test
 CLEAN_FILES += .cli.test .cli.test.tags
 
 .cli.test: $(BUILD) $(wildcard ./test/cli/*.sh)
-	@go run ./test/cli.go ./test/cli/*.sh && touch $@
+	@go run ./test/cli-test/main.go ./test/cli/*.sh && touch $@
 
 .cli.test.tags: $(BUILD) $(wildcard ./test/cli/*.sh)
-	@set -e ; for tag in $(TAGS) ; do go run -tags $$tag ./test/cli.go ./test/cli/*.sh ; done && touch $@
+	@set -e ; for tag in $(TAGS) ; do go run -tags $$tag ./test/cli-test/main.go ./test/cli/*.sh ; done && touch $@
 
 .PHONY: build
 build: $(BUILD)
