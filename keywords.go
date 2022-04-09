@@ -174,9 +174,7 @@ func keyValDifference(this, that []KeyVal) []KeyVal {
 }
 func keyValCopy(set []KeyVal) []KeyVal {
 	ret := make([]KeyVal, len(set))
-	for i := range set {
-		ret[i] = set[i]
-	}
+	copy(ret, set)
 	return ret
 }
 
