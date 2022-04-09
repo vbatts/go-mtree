@@ -71,6 +71,7 @@ func (fs *MockFsEval) KeywordFunc(fn KeywordFunc) KeywordFunc {
 	return fn
 }
 
+//gocyclo:ignore
 func TestCheckFsEval(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test-check-fs-eval")
 	if err != nil {

@@ -15,6 +15,7 @@ func init() {
 	//logrus.SetLevel(logrus.DebugLevel)
 }
 
+//gocyclo:ignore
 func TestXattrUpdate(t *testing.T) {
 	content := []byte("I know half of you half as well as I ought to")
 	// a bit dirty to create/destroy a directory in cwd, but often /tmp is

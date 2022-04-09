@@ -35,6 +35,7 @@ func TestCompare(t *testing.T) {
 	}
 }
 
+//gocyclo:ignore
 func TestCompareModified(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test-compare-modified")
 	if err != nil {
@@ -114,6 +115,7 @@ func TestCompareModified(t *testing.T) {
 	}
 }
 
+//gocyclo:ignore
 func TestCompareMissing(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test-compare-missing")
 	if err != nil {
@@ -205,6 +207,7 @@ func TestCompareMissing(t *testing.T) {
 	}
 }
 
+//gocyclo:ignore
 func TestCompareExtra(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test-compare-extra")
 	if err != nil {
@@ -338,6 +341,7 @@ func TestCompareKeys(t *testing.T) {
 	}
 }
 
+//gocyclo:ignore
 func TestTarCompare(t *testing.T) {
 	dir, err := ioutil.TempDir("", "test-compare-tar")
 	if err != nil {

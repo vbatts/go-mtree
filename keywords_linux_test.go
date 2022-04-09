@@ -13,6 +13,7 @@ import (
 	"github.com/vbatts/go-mtree/xattr"
 )
 
+//gocyclo:ignore
 func TestXattr(t *testing.T) {
 	testDir, present := os.LookupEnv("MTREE_TESTDIR")
 	if present == false {

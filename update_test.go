@@ -1,3 +1,4 @@
+//go:build go1.7
 // +build go1.7
 
 package mtree
@@ -20,6 +21,7 @@ func init() {
 	logrus.SetLevel(logrus.DebugLevel)
 }
 
+//gocyclo:ignore
 func TestUpdate(t *testing.T) {
 	content := []byte("I know half of you half as well as I ought to")
 	dir, err := ioutil.TempDir("", "test-check-keywords")
