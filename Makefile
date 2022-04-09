@@ -16,6 +16,14 @@ validation: .test .lint .vet .cli.test
 .PHONY: validation.tags
 validation.tags: .test.tags .vet.tags .cli.test
 
+.PHONY: gocyclo
+gocyclo: .gocyclo
+
+CLEAN_FILES += .gocyclo
+
+.gocyclo:
+	gocyclo -avg -over 15 -ignore 'vendor/*' . && touch $@
+
 .PHONY: test
 test: .test
 
@@ -69,7 +77,8 @@ $(BUILD): $(SOURCE_FILES)
 	go build -mod=vendor -o $(BUILD) $(BUILDPATH)
 
 install.tools:
-	@go get -u github.com/fatih/color ; \
+	@go install -u github.com/fatih/color@latest ; \
+	go install -u github.com/fzipp/gocyclo/cmd/gocyclo@latest ; \
 	if [ "$(findstring $(GO_VER),$(shell go version))" != "" ] ; then \
 		go get -u golang.org/x/lint/golint ;\
 	fi
