@@ -2,7 +2,6 @@ package mtree
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -32,7 +31,7 @@ func TestXattrUpdate(t *testing.T) {
 	}
 
 	if err := xattr.Set(dir, "user.test", []byte("directory")); err != nil {
-		t.Skip(fmt.Sprintf("skipping: %q does not support xattrs", dir))
+		t.Skipf("skipping: %q does not support xattrs", dir)
 	}
 	if err := xattr.Set(tmpfn, "user.test", []byte("regular file")); err != nil {
 		t.Fatal(err)

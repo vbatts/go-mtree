@@ -336,12 +336,6 @@ type fakeFile struct {
 	Xattrs     map[string]string
 }
 
-// minimal tar archive that mimics what is in ./testdata/test.tar
-var minimalFiles = []fakeFile{
-	{"x/", "", 0755, '5', 0, 0, nil},
-	{"x/files", "howdy\n", 0644, '0', 0, 0, nil},
-}
-
 func makeTarStream(ff []fakeFile) ([]byte, error) {
 	buf := new(bytes.Buffer)
 
