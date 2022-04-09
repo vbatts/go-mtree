@@ -129,6 +129,7 @@ func TestTar(t *testing.T) {
 // `tar -cvf some.tar dir1 dir2 dir3 dir4/dir5 dir6` ... etc.
 // The testdata of collection.tar resemble such an archive. the `collection` folder
 // is the contents of `collection.tar` extracted
+//gocyclo:ignore
 func TestArchiveCreation(t *testing.T) {
 	fh, err := os.Open("./testdata/collection.tar")
 	if err != nil {
@@ -197,6 +198,7 @@ func TestArchiveCreation(t *testing.T) {
 // evaluated. Also, The fact that this archive contains a single entry, yet the
 // entry is associated with a file that has parent directories, means that the
 // "." directory should be the lowest sub-directory under which `file` is contained.
+//gocyclo:ignore
 func TestTreeTraversal(t *testing.T) {
 	fh, err := os.Open("./testdata/traversal.tar")
 	if err != nil {
