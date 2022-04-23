@@ -90,5 +90,5 @@ func TestXattrUpdate(t *testing.T) {
 	}
 
 	// TODO make a test for xattr here. Likely in the user space for privileges. Even still this may be prone to error for some tmpfs don't act right with xattrs. :-\
-	// I'd hate to have to t.Skip() a test rather than fail alltogether.
+	// I'd hate to have to t.Skip() a test rather than fail altogether.
 }
