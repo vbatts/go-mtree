@@ -1,4 +1,4 @@
-# github.com/cpuguy83/go-md2man/v2 v2.0.1
+# github.com/cpuguy83/go-md2man/v2 v2.0.2
 ## explicit; go 1.11
 github.com/cpuguy83/go-md2man/v2/md2man
 # github.com/davecgh/go-spew v1.1.1
@@ -19,13 +19,16 @@ github.com/russross/blackfriday/v2
 # github.com/sirupsen/logrus v1.8.1
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/urfave/cli/v2 v2.4.0
-## explicit; go 1.11
+# github.com/urfave/cli/v2 v2.10.3
+## explicit; go 1.18
 github.com/urfave/cli/v2
-# golang.org/x/crypto v0.0.0-20220331220935-ae2d96664a29
+# github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673
+## explicit
+github.com/xrash/smetrics
+# golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d
 ## explicit; go 1.17
 golang.org/x/crypto/ripemd160
-# golang.org/x/sys v0.0.0-20220403205710-6acee93ad0eb
+# golang.org/x/sys v0.0.0-20220704084225-05e143d24a9e
 ## explicit; go 1.17
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
