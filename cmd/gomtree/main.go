@@ -18,6 +18,14 @@ func main() {
 	app := cli.NewApp()
 	app.Name = mtree.AppName
 	app.Usage = "map a directory hierarchy"
+	app.Description = `The gomtree utility compares the file hierarchy rooted in
+the current directory against a specification read from file or standard input.
+Messages are written to the standard output for any files whose characteristics
+do not match the specification, or which are missing from either the file
+hierarchy or the specification.
+
+This tool is written in likeness to the BSD MTREE(6), with notable additions
+to support xattrs and interacting with tar archives.`
 	app.Version = mtree.Version
 	// cli docs --> https://github.com/urfave/cli/blob/master/docs/v2/manual.md
 	app.Flags = []cli.Flag{
