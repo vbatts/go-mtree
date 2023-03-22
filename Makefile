@@ -82,7 +82,7 @@ CLEAN_FILES += .cli.test .cli.test.tags
 build: $(BUILD)
 
 $(BUILD): $(SOURCE_FILES)
-	go build -mod=vendor -o $(BUILD) $(BUILDPATH)
+	go build -ldflags="-X 'main.Version=$(shell git describe --always --dirty)'" -mod=vendor -o $(BUILD) $(BUILDPATH)
 
 install.tools:
 	@go install -u github.com/fatih/color@latest ; \

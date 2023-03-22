@@ -14,9 +14,12 @@ import (
 	"github.com/vbatts/go-mtree"
 )
 
+var Version string
+
 func main() {
 	app := cli.NewApp()
-	app.Name = mtree.AppName
+	app.Name = "gomtree"
+	app.Version = Version
 	app.Usage = "map a directory hierarchy"
 	app.Description = `The gomtree utility compares the file hierarchy rooted in
 the current directory against a specification read from file or standard input.
@@ -26,7 +29,6 @@ hierarchy or the specification.
 
 This tool is written in likeness to the BSD MTREE(6), with notable additions
 to support xattrs and interacting with tar archives.`
-	app.Version = mtree.Version
 	// cli docs --> https://github.com/urfave/cli/blob/master/docs/v2/manual.md
 	app.Flags = []cli.Flag{
 		// Flags common with mtree(8)
