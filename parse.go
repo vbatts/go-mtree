@@ -75,7 +75,7 @@ func ParseSpec(r io.Reader) (*DirectoryHierarchy, error) {
 
 			// parse the options
 			f := strings.Fields(str)
-			e.Name = filepath.Clean(f[0])
+			e.Name = f[0]
 			e.Keywords = StringToKeyVals(f[1:])
 			// TODO: gather keywords if using tar stream
 			var isDir bool
@@ -97,6 +97,10 @@ func ParseSpec(r io.Reader) (*DirectoryHierarchy, error) {
 				creator.curEnt = &e
 			}
 			e.Set = creator.curSet
+			// we need to clean the filepath at the end because '/'s can be
+			// stripped, which would cause FullTypes to be treated as
+			// RelativeTypes above
+			e.Name = filepath.Clean(e.Name)
 		default:
 			// TODO(vbatts) log a warning?
 			continue
