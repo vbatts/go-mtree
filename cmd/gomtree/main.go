@@ -1,17 +1,13 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v2"
-	"github.com/vbatts/go-mtree"
+	"github.com/vbatts/go-mtree/cmd/gomtree/cmd"
 )
 
 var Version string
@@ -31,514 +27,47 @@ This tool is written in likeness to the BSD MTREE(6), with notable additions
 to support xattrs and interacting with tar archives.`
 	// cli docs --> https://github.com/urfave/cli/blob/master/docs/v2/manual.md
 	app.Flags = []cli.Flag{
-		// Flags common with mtree(8)
-		&cli.BoolFlag{
-			Name:    "create",
-			Aliases: []string{"c"},
-			Usage:   "Create a directory hierarchy spec",
-		},
-		&cli.StringSliceFlag{
-			Name:    "file",
-			Aliases: []string{"f"},
-			Usage:   "Directory hierarchy spec to validate",
-		},
-		&cli.StringFlag{
-			Name:    "path",
-			Aliases: []string{"p"},
-			Usage:   "Root path that the hierarchy spec is relative to",
-		},
-		&cli.StringFlag{
-			Name:    "add-keywords",
-			Aliases: []string{"K"},
-			Usage:   "Add the specified (delimited by comma or space) keywords to the current set of keywords",
-		},
-		&cli.StringFlag{
-			Name:    "use-keywords",
-			Aliases: []string{"k"},
-			Usage:   "Use only the specified (delimited by comma or space) keywords as the current set of keywords",
-		},
-		&cli.BoolFlag{
-			Name:    "directory-only",
-			Aliases: []string{"d"},
-			Usage:   "Ignore everything except directory type files",
-		},
-		&cli.BoolFlag{
-			Name:    "update-attributes",
-			Aliases: []string{"u"},
-			Usage:   "Modify the owner, group, permissions and xattrs of files, symbolic links and devices, to match the provided specification. This is not compatible with '-T'.",
-		},
-
-		// Flags unique to gomtree
 		&cli.BoolFlag{
 			Name:  "debug",
 			Usage: "Output debug info to STDERR",
 			Value: false,
-		},
-		&cli.BoolFlag{
-			Name:  "list-keywords",
-			Usage: "List the keywords available",
-		},
-		&cli.BoolFlag{
-			Name:  "list-used",
-			Usage: "List all the keywords found in a validation manifest",
-		},
-		&cli.BoolFlag{
-			Name:  "bsd-keywords",
-			Usage: "Only operate on keywords that are supported by upstream mtree(8)",
-		},
-		&cli.StringFlag{
-			Name:    "tar",
-			Aliases: []string{"T"},
-			Value:   "",
-			Usage:   `Use tar archive to create or validate a directory hierarchy spec ("-" indicates stdin)`,
-		},
-		&cli.StringFlag{
-			Name:  "result-format",
-			Value: "bsd",
-			Usage: "output the validation results using the given format (bsd, json, path)",
+			Action: func(ctx *cli.Context, b bool) error {
+				if b {
+					os.Setenv("DEBUG", "1")
+					logrus.SetLevel(logrus.DebugLevel)
+				}
+				return nil
+			},
 		},
 	}
-	app.Action = func(c *cli.Context) error {
-		return mainApp(c)
+	app.Commands = []*cli.Command{
+		cmd.NewValidateCommand(),
 	}
+
+	// Unfortunately urfave/cli is not at good at using DefaultCommand
+	// as if you run the cli without a command but with flags like gomtree -K`
+	// it fails horribly with a "flag provided but not defined" error.
+	runValidate := false
+	app.OnUsageError = func(ctx *cli.Context, err error, isSubcommand bool) error {
+		if ctx.Command.Name == "gomtree" && strings.Contains(err.Error(), "flag provided but not defined") {
+			runValidate = true
+			return nil
+		}
+		return err
+	}
+
 	if err := app.Run(os.Args); err != nil {
-		logrus.Fatal(err)
-	}
-}
-
-func mainApp(c *cli.Context) error {
-	if c.Bool("debug") {
-		os.Setenv("DEBUG", "1")
-		logrus.SetLevel(logrus.DebugLevel)
+		fmt.Println(err.Error())
 	}
 
-	// -list-keywords
-	if c.Bool("list-keywords") {
-		fmt.Println("Available keywords:")
-		for k := range mtree.KeywordFuncs {
-			fmt.Print(" ")
-			fmt.Print(k)
-			if mtree.Keyword(k).Default() {
-				fmt.Print(" (default)")
-			}
-			if !mtree.Keyword(k).Bsd() {
-				fmt.Print(" (not upstream)")
-			}
-			fmt.Print("\n")
-		}
-		return nil
-	}
-
-	// --result-format
-	formatFunc, ok := formats[c.String("result-format")]
-	if !ok {
-		return fmt.Errorf("invalid output format: %s", c.String("result-format"))
-	}
-
-	var (
-		err             error
-		tmpKeywords     []mtree.Keyword
-		currentKeywords []mtree.Keyword
-	)
-
-	// -k <keywords>
-	if c.String("use-keywords") != "" {
-		tmpKeywords = splitKeywordsArg(c.String("use-keywords"))
-		if !mtree.InKeywordSlice("type", tmpKeywords) {
-			tmpKeywords = append([]mtree.Keyword{"type"}, tmpKeywords...)
-		}
-	} else {
-		if c.String("tar") != "" {
-			tmpKeywords = mtree.DefaultTarKeywords[:]
-		} else {
-			tmpKeywords = mtree.DefaultKeywords[:]
+	// So we run the command again with the validate command as the default.
+	if runValidate {
+		app.OnUsageError = nil
+		args := []string{os.Args[0], "validate"}
+		args = append(args, os.Args[1:]...)
+		if err := app.Run(args); err != nil {
+			fmt.Println(err.Error())
 		}
 	}
 
-	// -K <keywords>
-	if c.String("add-keywords") != "" {
-		for _, kw := range splitKeywordsArg(c.String("add-keywords")) {
-			if !mtree.InKeywordSlice(kw, tmpKeywords) {
-				tmpKeywords = append(tmpKeywords, kw)
-			}
-		}
-	}
-
-	// -bsd-keywords
-	if c.Bool("bsd-keywords") {
-		for _, k := range tmpKeywords {
-			if mtree.Keyword(k).Bsd() {
-				currentKeywords = append(currentKeywords, k)
-			} else {
-				fmt.Fprintf(os.Stderr, "INFO: ignoring %q as it is not an upstream keyword\n", k)
-			}
-		}
-	} else {
-		currentKeywords = tmpKeywords
-	}
-
-	// Check mutual exclusivity of keywords.
-	// TODO(cyphar): Abstract this inside keywords.go.
-	if mtree.InKeywordSlice("tar_time", currentKeywords) && mtree.InKeywordSlice("time", currentKeywords) {
-		return fmt.Errorf("tar_time and time are mutually exclusive keywords")
-	}
-
-	// If we're doing a comparison, we always are comparing between a spec and
-	// state DH. If specDh is nil, we are generating a new one.
-	var (
-		specDh       *mtree.DirectoryHierarchy
-		stateDh      *mtree.DirectoryHierarchy
-		specKeywords []mtree.Keyword
-	)
-
-	// -f <file>
-	if len(c.StringSlice("file")) > 0 && !c.Bool("create") {
-		// load the hierarchy, if we're not creating a new spec
-		fh, err := os.Open(c.StringSlice("file")[0])
-		if err != nil {
-			return err
-		}
-		specDh, err = mtree.ParseSpec(fh)
-		fh.Close()
-		if err != nil {
-			return err
-		}
-
-		// We can't check against more fields than in the specKeywords list, so
-		// currentKeywords can only have a subset of specKeywords.
-		specKeywords = specDh.UsedKeywords()
-	}
-
-	// -list-used
-	if c.Bool("list-used") {
-		if specDh == nil {
-			return fmt.Errorf("no specification provided. please provide a validation manifest")
-		}
-
-		if c.String("result-format") == "json" {
-			for _, file := range c.StringSlice("file") {
-				// if they're asking for json, give it to them
-				data := map[string][]mtree.Keyword{file: specKeywords}
-				buf, err := json.MarshalIndent(data, "", "  ")
-				if err != nil {
-					return err
-				}
-				fmt.Println(string(buf))
-			}
-		} else {
-			for _, file := range c.StringSlice("file") {
-				fmt.Printf("Keywords used in [%s]:\n", file)
-				for _, kw := range specKeywords {
-					fmt.Printf(" %s", kw)
-					if _, ok := mtree.KeywordFuncs[kw]; !ok {
-						fmt.Print(" (unsupported)")
-					}
-					fmt.Printf("\n")
-				}
-			}
-		}
-		return nil
-	}
-
-	if specKeywords != nil {
-		// If we didn't actually change the set of keywords, we can just use specKeywords.
-		if c.String("use-keywords") == "" && c.String("add-keywords") == "" {
-			currentKeywords = specKeywords
-		}
-
-		for _, keyword := range currentKeywords {
-			// As always, time is a special case.
-			// TODO: Fix that.
-			if (keyword == "time" && mtree.InKeywordSlice("tar_time", specKeywords)) || (keyword == "tar_time" && mtree.InKeywordSlice("time", specKeywords)) {
-				continue
-			}
-		}
-	}
-
-	// -p and -T are mutually exclusive
-	if c.String("path") != "" && c.String("tar") != "" {
-		return fmt.Errorf("options -T and -p are mutually exclusive")
-	}
-
-	// -p <path>
-	var rootPath = "."
-	if c.String("path") != "" {
-		rootPath = c.String("path")
-	}
-
-	excludes := []mtree.ExcludeFunc{}
-	// -d
-	if c.Bool("directory-only") {
-		excludes = append(excludes, mtree.ExcludeNonDirectories)
-	}
-
-	// -u
-	// Failing early here. Processing is done below.
-	if c.Bool("update-attributes") && c.String("tar") != "" {
-		return fmt.Errorf("ERROR: -u can not be used with -T")
-	}
-
-	// -T <tar file>
-	if c.String("tar") != "" {
-		var input io.Reader
-		if c.String("tar") == "-" {
-			input = os.Stdin
-		} else {
-			fh, err := os.Open(c.String("tar"))
-			if err != nil {
-				return err
-			}
-			defer fh.Close()
-			input = fh
-		}
-		ts := mtree.NewTarStreamer(input, excludes, currentKeywords)
-
-		if _, err := io.Copy(ioutil.Discard, ts); err != nil && err != io.EOF {
-			return err
-		}
-		if err := ts.Close(); err != nil {
-			return err
-		}
-		var err error
-		stateDh, err = ts.Hierarchy()
-		if err != nil {
-			return err
-		}
-	} else if len(c.StringSlice("file")) > 1 {
-		// load this second hierarchy file provided
-		fh, err := os.Open(c.StringSlice("file")[1])
-		if err != nil {
-			return err
-		}
-		stateDh, err = mtree.ParseSpec(fh)
-		fh.Close()
-		if err != nil {
-			return err
-		}
-	} else {
-		// with a root directory
-		stateDh, err = mtree.Walk(rootPath, excludes, currentKeywords, nil)
-		if err != nil {
-			return err
-		}
-	}
-
-	// -u
-	if c.Bool("update-attributes") && stateDh != nil {
-		// -u
-		// this comes before the next case, intentionally.
-		result, err := mtree.Update(rootPath, specDh, mtree.DefaultUpdateKeywords, nil)
-		if err != nil {
-			return err
-		}
-		if len(result) > 0 {
-			fmt.Printf("%#v\n", result)
-		}
-
-		var res []mtree.InodeDelta
-		// only check the keywords that we just updated
-		res, err = mtree.Check(rootPath, specDh, mtree.DefaultUpdateKeywords, nil)
-		if err != nil {
-			return err
-		}
-		if res != nil {
-			out := formatFunc(res)
-			if _, err := os.Stdout.Write([]byte(out)); err != nil {
-				return err
-			}
-
-			// TODO: This should be a flag. Allowing files to be added and
-			//       removed and still returning "it's all good" is simply
-			//       unsafe IMO.
-			for _, diff := range res {
-				if diff.Type() == mtree.Modified {
-					return fmt.Errorf("manifest validation failed")
-				}
-			}
-		}
-
-		return nil
-	}
-
-	// -c
-	if c.Bool("create") {
-		fh := os.Stdout
-		if len(c.StringSlice("file")) > 0 {
-			fh, err = os.Create(c.StringSlice("file")[0])
-			if err != nil {
-				return err
-			}
-		}
-
-		// output stateDh
-		stateDh.WriteTo(fh)
-		return nil
-	}
-
-	// no spec manifest has been provided yet, so look for it on stdin
-	if specDh == nil {
-		// load the hierarchy
-		specDh, err = mtree.ParseSpec(os.Stdin)
-		if err != nil {
-			return err
-		}
-
-		// We can't check against more fields than in the specKeywords list, so
-		// currentKeywords can only have a subset of specKeywords.
-		specKeywords = specDh.UsedKeywords()
-	}
-
-	// This is a validation.
-	if specDh != nil && stateDh != nil {
-		var res []mtree.InodeDelta
-		res, err = mtree.Compare(specDh, stateDh, currentKeywords)
-		if err != nil {
-			return err
-		}
-		if res != nil {
-			if isTarSpec(specDh) || c.String("tar") != "" {
-				res = filterMissingKeywords(res)
-			}
-
-			out := formatFunc(res)
-			if _, err := os.Stdout.Write([]byte(out)); err != nil {
-				return err
-			}
-
-			// TODO: This should be a flag. Allowing files to be added and
-			//       removed and still returning "it's all good" is simply
-			//       unsafe IMO.
-			for _, diff := range res {
-				if diff.Type() == mtree.Modified {
-					return fmt.Errorf("manifest validation failed")
-				}
-			}
-		}
-	} else {
-		return fmt.Errorf("neither validating or creating a manifest. Please provide additional arguments")
-	}
-	return nil
-}
-
-var formats = map[string]func([]mtree.InodeDelta) string{
-	// Outputs the errors in the BSD format.
-	"bsd": func(d []mtree.InodeDelta) string {
-		var buffer bytes.Buffer
-		for _, delta := range d {
-			fmt.Fprintln(&buffer, delta)
-		}
-		return buffer.String()
-	},
-
-	// Outputs the full result struct in JSON.
-	"json": func(d []mtree.InodeDelta) string {
-		var buffer bytes.Buffer
-		if err := json.NewEncoder(&buffer).Encode(d); err != nil {
-			panic(err)
-		}
-		return buffer.String()
-	},
-
-	// Outputs only the paths which failed to validate.
-	"path": func(d []mtree.InodeDelta) string {
-		var buffer bytes.Buffer
-		for _, delta := range d {
-			if delta.Type() == mtree.Modified {
-				fmt.Fprintln(&buffer, delta.Path())
-			}
-		}
-		return buffer.String()
-	},
-}
-
-// isDirEntry returns wheter an mtree.Entry describes a directory.
-func isDirEntry(e mtree.Entry) bool {
-	for _, kw := range e.Keywords {
-		kv := mtree.KeyVal(kw)
-		if kv.Keyword() == "type" {
-			return kv.Value() == "dir"
-		}
-	}
-	// Shouldn't be reached.
-	return false
-}
-
-// filterMissingKeywords is a fairly annoying hack to get around the fact that
-// tar archive manifest generation has certain unsolveable problems regarding
-// certain keywords. For example, the size=... keyword cannot be implemented
-// for directories in a tar archive (which causes Missing errors for that
-// keyword).
-//
-// This function just removes all instances of Missing errors for keywords.
-// This makes certain assumptions about the type of issues tar archives have.
-// Only call this on tar archive manifest comparisons.
-func filterMissingKeywords(diffs []mtree.InodeDelta) []mtree.InodeDelta {
-	newDiffs := []mtree.InodeDelta{}
-loop:
-	for _, diff := range diffs {
-		if diff.Type() == mtree.Modified {
-			// We only apply this filtering to directories.
-			// NOTE: This will probably break if someone drops the size keyword.
-			if isDirEntry(*diff.Old()) || isDirEntry(*diff.New()) {
-				// If this applies to '.' then we just filter everything
-				// (meaning we remove this entry). This is because note all tar
-				// archives include a '.' entry. Which makes checking this not
-				// practical.
-				if diff.Path() == "." {
-					continue
-				}
-
-				// Only filter out the size keyword.
-				// NOTE: This currently takes advantage of the fact the
-				//       diff.Diff() returns the actual slice to diff.keys.
-				keys := diff.Diff()
-				for idx, k := range keys {
-					// Delete the key if it's "size". Unfortunately in Go you
-					// can't delete from a slice without reassigning it. So we
-					// just overwrite it with the last value.
-					if k.Name() == "size" {
-						if len(keys) < 2 {
-							continue loop
-						}
-						keys[idx] = keys[len(keys)-1]
-					}
-				}
-			}
-		}
-
-		// If we got here, append to the new set.
-		newDiffs = append(newDiffs, diff)
-	}
-	return newDiffs
-}
-
-// isTarSpec returns whether the spec provided came from the tar generator.
-// This takes advantage of an unsolveable problem in tar generation.
-func isTarSpec(spec *mtree.DirectoryHierarchy) bool {
-	// Find a directory and check whether it's missing size=...
-	// NOTE: This will definitely break if someone drops the size=... keyword.
-	for _, e := range spec.Entries {
-		if !isDirEntry(e) {
-			continue
-		}
-
-		for _, kw := range e.Keywords {
-			kv := mtree.KeyVal(kw)
-			if kv.Keyword() == "size" {
-				return false
-			}
-		}
-		return true
-	}
-
-	// Should never be reached.
-	return false
-}
-
-func splitKeywordsArg(str string) []mtree.Keyword {
-	keywords := []mtree.Keyword{}
-	for _, kw := range strings.Fields(strings.Replace(str, ",", " ", -1)) {
-		keywords = append(keywords, mtree.KeywordSynonym(kw))
-	}
-	return keywords
 }

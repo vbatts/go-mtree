@@ -18,6 +18,7 @@ func main() {
 	for _, arg := range flag.Args() {
 		cmd := exec.Command("bash", arg)
 		if os.Getenv("TMPDIR") != "" {
+			cmd.Env = append(cmd.Env, os.Environ()...)
 			cmd.Env = append(cmd.Env, "TMPDIR="+os.Getenv("TMPDIR"))
 		}
 		cmd.Stderr = os.Stderr
