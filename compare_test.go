@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,7 +36,7 @@ func TestCompare(t *testing.T) {
 
 //gocyclo:ignore
 func TestCompareModified(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-compare-modified")
+	dir, err := os.MkdirTemp("", "test-compare-modified")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +44,7 @@ func TestCompareModified(t *testing.T) {
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
-	if err := ioutil.WriteFile(tmpfile, []byte("some content here"), 0666); err != nil {
+	if err := os.WriteFile(tmpfile, []byte("some content here"), 0666); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,7 +54,7 @@ func TestCompareModified(t *testing.T) {
 	}
 
 	tmpsubfile := filepath.Join(tmpdir, "anotherfile")
-	if err := ioutil.WriteFile(tmpsubfile, []byte("some different content"), 0666); err != nil {
+	if err := os.WriteFile(tmpsubfile, []byte("some different content"), 0666); err != nil {
 		t.Fatal(err)
 	}
 
@@ -66,7 +65,7 @@ func TestCompareModified(t *testing.T) {
 	}
 
 	// Overwrite the content in one of the files.
-	if err := ioutil.WriteFile(tmpsubfile, []byte("modified content"), 0666); err != nil {
+	if err := os.WriteFile(tmpsubfile, []byte("modified content"), 0666); err != nil {
 		t.Fatal(err)
 	}
 
@@ -117,7 +116,7 @@ func TestCompareModified(t *testing.T) {
 
 //gocyclo:ignore
 func TestCompareMissing(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-compare-missing")
+	dir, err := os.MkdirTemp("", "test-compare-missing")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +124,7 @@ func TestCompareMissing(t *testing.T) {
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
-	if err := ioutil.WriteFile(tmpfile, []byte("some content here"), 0666); err != nil {
+	if err := os.WriteFile(tmpfile, []byte("some content here"), 0666); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,7 +134,7 @@ func TestCompareMissing(t *testing.T) {
 	}
 
 	tmpsubfile := filepath.Join(tmpdir, "anotherfile")
-	if err := ioutil.WriteFile(tmpsubfile, []byte("some different content"), 0666); err != nil {
+	if err := os.WriteFile(tmpsubfile, []byte("some different content"), 0666); err != nil {
 		t.Fatal(err)
 	}
 
@@ -209,7 +208,7 @@ func TestCompareMissing(t *testing.T) {
 
 //gocyclo:ignore
 func TestCompareExtra(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-compare-extra")
+	dir, err := os.MkdirTemp("", "test-compare-extra")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +222,7 @@ func TestCompareExtra(t *testing.T) {
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
-	if err := ioutil.WriteFile(tmpfile, []byte("some content here"), 0666); err != nil {
+	if err := os.WriteFile(tmpfile, []byte("some content here"), 0666); err != nil {
 		t.Fatal(err)
 	}
 
@@ -233,7 +232,7 @@ func TestCompareExtra(t *testing.T) {
 	}
 
 	tmpsubfile := filepath.Join(tmpdir, "anotherfile")
-	if err := ioutil.WriteFile(tmpsubfile, []byte("some different content"), 0666); err != nil {
+	if err := os.WriteFile(tmpsubfile, []byte("some different content"), 0666); err != nil {
 		t.Fatal(err)
 	}
 
@@ -287,7 +286,7 @@ func TestCompareExtra(t *testing.T) {
 }
 
 func TestCompareKeys(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-compare-keys")
+	dir, err := os.MkdirTemp("", "test-compare-keys")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +294,7 @@ func TestCompareKeys(t *testing.T) {
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
-	if err := ioutil.WriteFile(tmpfile, []byte("some content here"), 0666); err != nil {
+	if err := os.WriteFile(tmpfile, []byte("some content here"), 0666); err != nil {
 		t.Fatal(err)
 	}
 
@@ -305,7 +304,7 @@ func TestCompareKeys(t *testing.T) {
 	}
 
 	tmpsubfile := filepath.Join(tmpdir, "anotherfile")
-	if err := ioutil.WriteFile(tmpsubfile, []byte("aaa"), 0666); err != nil {
+	if err := os.WriteFile(tmpsubfile, []byte("aaa"), 0666); err != nil {
 		t.Fatal(err)
 	}
 
@@ -316,7 +315,7 @@ func TestCompareKeys(t *testing.T) {
 	}
 
 	// Overwrite the content in one of the files, but without changing the size.
-	if err := ioutil.WriteFile(tmpsubfile, []byte("bbb"), 0666); err != nil {
+	if err := os.WriteFile(tmpsubfile, []byte("bbb"), 0666); err != nil {
 		t.Fatal(err)
 	}
 
@@ -343,7 +342,7 @@ func TestCompareKeys(t *testing.T) {
 
 //gocyclo:ignore
 func TestTarCompare(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-compare-tar")
+	dir, err := os.MkdirTemp("", "test-compare-tar")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +350,7 @@ func TestTarCompare(t *testing.T) {
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
-	if err := ioutil.WriteFile(tmpfile, []byte("some content"), 0644); err != nil {
+	if err := os.WriteFile(tmpfile, []byte("some content"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -361,7 +360,7 @@ func TestTarCompare(t *testing.T) {
 	}
 
 	tmpsubfile := filepath.Join(tmpdir, "anotherfile")
-	if err := ioutil.WriteFile(tmpsubfile, []byte("aaa"), 0644); err != nil {
+	if err := os.WriteFile(tmpsubfile, []byte("aaa"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -395,7 +394,7 @@ func TestTarCompare(t *testing.T) {
 	}
 
 	str := NewTarStreamer(bytes.NewBuffer(ts), nil, append(DefaultTarKeywords, "sha1"))
-	if _, err = io.Copy(ioutil.Discard, str); err != nil && err != io.EOF {
+	if _, err = io.Copy(io.Discard, str); err != nil && err != io.EOF {
 		t.Fatal(err)
 	}
 	if err = str.Close(); err != nil {

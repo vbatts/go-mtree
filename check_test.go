@@ -2,7 +2,6 @@ package mtree
 
 import (
 	"bytes"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,14 +30,14 @@ func TestCheck(t *testing.T) {
 // only check again for size and sha1, and ignore time, and ensure it passes
 func TestCheckKeywords(t *testing.T) {
 	content := []byte("I know half of you half as well as I ought to")
-	dir, err := ioutil.TempDir("", "test-check-keywords")
+	dir, err := os.MkdirTemp("", "test-check-keywords")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir) // clean up
 
 	tmpfn := filepath.Join(dir, "tmpfile")
-	if err := ioutil.WriteFile(tmpfn, content, 0666); err != nil {
+	if err := os.WriteFile(tmpfn, content, 0666); err != nil {
 		t.Fatal(err)
 	}
 
@@ -120,7 +119,7 @@ func TestDefaultBrokenLink(t *testing.T) {
 
 // https://github.com/vbatts/go-mtree/issues/8
 func TestTimeComparison(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-time.")
+	dir, err := os.MkdirTemp("", "test-time.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +164,7 @@ func TestTimeComparison(t *testing.T) {
 }
 
 func TestTarTime(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-tar-time.")
+	dir, err := os.MkdirTemp("", "test-tar-time.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +218,7 @@ func TestTarTime(t *testing.T) {
 }
 
 func TestIgnoreComments(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-comments.")
+	dir, err := os.MkdirTemp("", "test-comments.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +287,7 @@ func TestIgnoreComments(t *testing.T) {
 }
 
 func TestCheckNeedsEncoding(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-needs-encoding")
+	dir, err := os.MkdirTemp("", "test-needs-encoding")
 	if err != nil {
 		t.Fatal(err)
 	}

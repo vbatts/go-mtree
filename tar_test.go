@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"bytes"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -62,7 +61,7 @@ func TestTar(t *testing.T) {
 	}
 	str := NewTarStreamer(fh, nil, append(DefaultKeywords, "sha1"))
 
-	if _, err := io.Copy(ioutil.Discard, str); err != nil && err != io.EOF {
+	if _, err := io.Copy(io.Discard, str); err != nil && err != io.EOF {
 		t.Fatal(err)
 	}
 	if err := str.Close(); err != nil {
@@ -137,7 +136,7 @@ func TestArchiveCreation(t *testing.T) {
 	}
 	str := NewTarStreamer(fh, nil, []Keyword{"sha1"})
 
-	if _, err := io.Copy(ioutil.Discard, str); err != nil && err != io.EOF {
+	if _, err := io.Copy(io.Discard, str); err != nil && err != io.EOF {
 		t.Fatal(err)
 	}
 	if err := str.Close(); err != nil {
@@ -206,7 +205,7 @@ func TestTreeTraversal(t *testing.T) {
 	}
 	str := NewTarStreamer(fh, nil, DefaultTarKeywords)
 
-	if _, err = io.Copy(ioutil.Discard, str); err != nil && err != io.EOF {
+	if _, err = io.Copy(io.Discard, str); err != nil && err != io.EOF {
 		t.Fatal(err)
 	}
 	if err = str.Close(); err != nil {
@@ -258,7 +257,7 @@ func TestTreeTraversal(t *testing.T) {
 		t.Fatal(err)
 	}
 	str = NewTarStreamer(fh, nil, DefaultTarKeywords)
-	if _, err = io.Copy(ioutil.Discard, str); err != nil && err != io.EOF {
+	if _, err = io.Copy(io.Discard, str); err != nil && err != io.EOF {
 		t.Fatal(err)
 	}
 	if err = str.Close(); err != nil {
@@ -297,7 +296,7 @@ func TestHardlinks(t *testing.T) {
 	}
 	str := NewTarStreamer(fh, nil, append(DefaultTarKeywords, "nlink"))
 
-	if _, err = io.Copy(ioutil.Discard, str); err != nil && err != io.EOF {
+	if _, err = io.Copy(io.Discard, str); err != nil && err != io.EOF {
 		t.Fatal(err)
 	}
 	if err = str.Close(); err != nil {
@@ -379,7 +378,7 @@ func TestArchiveExcludeNonDirectory(t *testing.T) {
 	}
 	str := NewTarStreamer(fh, []ExcludeFunc{ExcludeNonDirectories}, []Keyword{"type"})
 
-	if _, err := io.Copy(ioutil.Discard, str); err != nil && err != io.EOF {
+	if _, err := io.Copy(io.Discard, str); err != nil && err != io.EOF {
 		t.Fatal(err)
 	}
 	if err := str.Close(); err != nil {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 
@@ -266,7 +265,7 @@ func validateAction(c *cli.Context) error {
 		}
 		ts := mtree.NewTarStreamer(input, excludes, currentKeywords)
 
-		if _, err := io.Copy(ioutil.Discard, ts); err != nil && err != io.EOF {
+		if _, err := io.Copy(io.Discard, ts); err != nil && err != io.EOF {
 			return err
 		}
 		if err := ts.Close(); err != nil {
@@ -344,8 +343,8 @@ func validateAction(c *cli.Context) error {
 		}
 
 		// output stateDh
-		stateDh.WriteTo(fh)
-		return nil
+		_, err = stateDh.WriteTo(fh)
+		return err
 	}
 
 	// no spec manifest has been provided yet, so look for it on stdin
@@ -358,7 +357,8 @@ func validateAction(c *cli.Context) error {
 
 		// We can't check against more fields than in the specKeywords list, so
 		// currentKeywords can only have a subset of specKeywords.
-		specKeywords = specDh.UsedKeywords()
+		// TODO this specKeywords is not even used
+		_ = specDh.UsedKeywords()
 	}
 
 	// This is a validation.

@@ -1,7 +1,6 @@
 package mtree
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -13,7 +12,7 @@ func TestWalk(t *testing.T) {
 	}
 	numEntries := countTypes(dh)
 
-	fh, err := ioutil.TempFile("", "walk.")
+	fh, err := os.CreateTemp("", "walk.")
 	if err != nil {
 		t.Fatal(err)
 	}

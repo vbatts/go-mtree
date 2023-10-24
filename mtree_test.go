@@ -1,7 +1,7 @@
 package mtree
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 
@@ -74,7 +74,7 @@ func TestParser(t *testing.T) {
 				}
 			}
 
-			i, err := dh.WriteTo(ioutil.Discard)
+			i, err := dh.WriteTo(io.Discard)
 			if err != nil {
 				t.Error(err)
 			}

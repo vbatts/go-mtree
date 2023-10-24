@@ -11,7 +11,7 @@ GO_VER := go1.14
 default: build validation
 
 .PHONY: validation
-validation: .test .lint .vet .cli.test
+validation: .test .vet .cli.test
 
 .PHONY: validation.tags
 validation.tags: .test.tags .vet.tags .cli.test .staticcheck
@@ -50,11 +50,7 @@ lint: .lint
 CLEAN_FILES += .lint
 
 .lint: $(SOURCE_FILES)
-	@if [ "$(findstring $(GO_VER),$(shell go version))" != "" ] ; then \
-		set -e ; for dir in $(NO_VENDOR_DIR) ; do golint -set_exit_status $$dir ; done && touch $@ \
-	else \
-		touch $@ ; \
-	fi
+	set -e ; golangci-lint run && touch $@
 
 .PHONY: vet
 vet: .vet .vet.tags
@@ -85,12 +81,10 @@ $(BUILD): $(SOURCE_FILES)
 	go build -ldflags="-X 'main.Version=$(shell git describe --always --dirty)'" -mod=vendor -o $(BUILD) $(BUILDPATH)
 
 install.tools:
-	@go install -u github.com/fatih/color@latest ; \
-	go install -u github.com/fzipp/gocyclo/cmd/gocyclo@latest ; \
-	go install -u honnef.co/go/tools/cmd/staticcheck@latest ; \
-	if [ "$(findstring $(GO_VER),$(shell go version))" != "" ] ; then \
-		go get -u golang.org/x/lint/golint ;\
-	fi
+	@go install github.com/fatih/color@latest ; \
+	go install github.com/fzipp/gocyclo/cmd/gocyclo@latest ; \
+	go install honnef.co/go/tools/cmd/staticcheck@latest ; \
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 ./bin:
 	mkdir -p $@

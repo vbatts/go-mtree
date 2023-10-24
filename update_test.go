@@ -6,7 +6,6 @@ package mtree
 import (
 	"container/heap"
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -24,14 +23,14 @@ func init() {
 //gocyclo:ignore
 func TestUpdate(t *testing.T) {
 	content := []byte("I know half of you half as well as I ought to")
-	dir, err := ioutil.TempDir("", "test-check-keywords")
+	dir, err := os.MkdirTemp("", "test-check-keywords")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir) // clean up
 
 	tmpfn := filepath.Join(dir, "tmpfile")
-	if err := ioutil.WriteFile(tmpfn, content, 0666); err != nil {
+	if err := os.WriteFile(tmpfn, content, 0666); err != nil {
 		t.Fatal(err)
 	}
 
