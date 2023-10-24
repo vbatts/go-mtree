@@ -15,6 +15,7 @@ import (
 func NewValidateCommand() *cli.Command {
 	return &cli.Command{
 		Name:   "validate",
+		Usage:  "Create and validate a filesystem hierarchy (this is default tool behavior)",
 		Action: validateAction,
 		Flags: []cli.Flag{
 			// Flags common with mtree(8)

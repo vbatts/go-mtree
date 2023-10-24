@@ -104,31 +104,31 @@ To use the command line tool, first [build it](#Building), then the following.
 This will also include the sha512 digest of the files.
 
 ```shell
-gomtree -c -K sha512digest -p . > /tmp/root.mtree
+gomtree validate -c -K sha512digest -p . > /tmp/root.mtree
 ```
 
 With a tar file:
 
 ```shell
-gomtree -c -K sha512digest -T sometarfile.tar > /tmp/tar.mtree
+gomtree validate -c -K sha512digest -T sometarfile.tar > /tmp/tar.mtree
 ```
 
 ### Validate a manifest
 
 ```shell
-gomtree -p . -f /tmp/root.mtree
+gomtree validate -p . -f /tmp/root.mtree
 ```
 
 With a tar file:
 
 ```shell
-gomtree -T sometarfile.tar -f /tmp/root.mtree
+gomtree validate -T sometarfile.tar -f /tmp/root.mtree
 ```
 
 ### See the supported keywords
 
 ```shell
-gomtree -list-keywords
+gomtree validate -list-keywords
 Available keywords:
  uname
  sha1
