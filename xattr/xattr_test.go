@@ -5,7 +5,6 @@ package xattr
 
 import (
 	"bytes"
-	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -15,7 +14,7 @@ func TestXattr(t *testing.T) {
 	if present == false {
 		testDir = "."
 	}
-	fh, err := ioutil.TempFile(testDir, "xattr.")
+	fh, err := os.CreateTemp(testDir, "xattr.")
 	if err != nil {
 		t.Fatal(err)
 	}

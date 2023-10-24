@@ -2,7 +2,6 @@ package mtree
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -73,7 +72,7 @@ func (fs *MockFsEval) KeywordFunc(fn KeywordFunc) KeywordFunc {
 
 //gocyclo:ignore
 func TestCheckFsEval(t *testing.T) {
-	dir, err := ioutil.TempDir("", "test-check-fs-eval")
+	dir, err := os.MkdirTemp("", "test-check-fs-eval")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +80,7 @@ func TestCheckFsEval(t *testing.T) {
 
 	content := []byte("If you hide your ignorance, no one will hit you and you'll never learn.")
 	tmpfn := filepath.Join(dir, "tmpfile")
-	if err := ioutil.WriteFile(tmpfn, content, 0451); err != nil {
+	if err := os.WriteFile(tmpfn, content, 0451); err != nil {
 		t.Fatal(err)
 	}
 

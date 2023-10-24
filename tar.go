@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -111,7 +110,7 @@ hdrloop:
 		// Because the content of the file may need to be read by several
 		// KeywordFuncs, it needs to be an io.Seeker as well. So, just reading from
 		// ts.tarReader is not enough.
-		tmpFile, err := ioutil.TempFile("", "ts.payload.")
+		tmpFile, err := os.CreateTemp("", "ts.payload.")
 		if err != nil {
 			ts.pipeReader.CloseWithError(err)
 			return

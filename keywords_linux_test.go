@@ -4,7 +4,6 @@
 package mtree
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,7 +20,7 @@ func TestXattr(t *testing.T) {
 		// xattrs
 		testDir = "."
 	}
-	dir, err := ioutil.TempDir(testDir, "test.xattrs.")
+	dir, err := os.MkdirTemp(testDir, "test.xattrs.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,8 +29,14 @@ func TestXattr(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fh.WriteString("howdy")
-	fh.Sync()
+	_, err = fh.WriteString("howdy")
+	if err != nil {
+		t.Errorf("failed to write string: %s", err)
+	}
+	err = fh.Sync()
+	if err != nil {
+		t.Errorf("failed to sync file: %s", err)
+	}
 	if _, err := fh.Seek(0, 0); err != nil {
 		t.Fatal(err)
 	}

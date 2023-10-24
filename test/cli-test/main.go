@@ -32,5 +32,5 @@ func main() {
 		fmt.Fprintf(os.Stderr, red("%d FAILED tests\n"), failed)
 		os.Exit(1)
 	}
-	fmt.Fprintf(os.Stdout, green("SUCCESS: no cli tests failed\n"))
+	fmt.Fprint(os.Stdout, green("SUCCESS: no cli tests failed\n"))
 }

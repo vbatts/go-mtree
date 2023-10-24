@@ -5,13 +5,12 @@ package xattr
 
 import (
 	"bytes"
-	"io/ioutil"
 	"os"
 	"testing"
 )
 
 func TestXattrUnsupported(t *testing.T) {
-	fh, err := ioutil.TempFile(".", "xattr.")
+	fh, err := os.CreateTemp(".", "xattr.")
 	if err != nil {
 		t.Fatal(err)
 	}
