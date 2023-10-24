@@ -229,8 +229,9 @@ hdrloop:
 // appropriate position in the tree. If not, create a path up until the Entry's
 // directory that it is contained in. Then, insert the Entry.
 // root: the "." Entry
-//    e: the Entry we are looking to insert
-//  hdr: the tar header struct associated with e
+//
+//	  e: the Entry we are looking to insert
+//	hdr: the tar header struct associated with e
 func populateTree(root, e *Entry, hdr *tar.Header) error {
 	if root == nil || e == nil {
 		return fmt.Errorf("cannot populate or insert nil Entry's")
@@ -295,8 +296,10 @@ func populateTree(root, e *Entry, hdr *tar.Header) error {
 
 // After constructing a pseudo file hierarchy tree, we want to "flatten" this
 // tree by putting the Entries into a slice with appropriate positioning.
-//     root: the "head" of the sub-tree to flatten
-//  creator: a dhCreator that helps with the '/set' keyword
+//
+//	   root: the "head" of the sub-tree to flatten
+//	creator: a dhCreator that helps with the '/set' keyword
+//
 // keywords: keywords specified by the user that should be evaluated
 func flatten(root *Entry, creator *dhCreator, keywords []Keyword) {
 	if root == nil || creator == nil {
