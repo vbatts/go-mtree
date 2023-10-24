@@ -58,6 +58,7 @@ func ParseSpec(r io.Reader) (*DirectoryHierarchy, error) {
 			e.Type = DotDotType
 			e.Raw = str
 			if creator.curDir != nil {
+				e.Parent = creator.curDir
 				creator.curDir = creator.curDir.Parent
 			}
 			// nothing else to do here

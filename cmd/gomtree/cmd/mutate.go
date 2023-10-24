@@ -64,67 +64,46 @@ func mutateAction(c *cli.Context) error {
 		return fmt.Errorf("parsing mtree %s: %w", mtreePath, err)
 	}
 
-	dropDotDot := 0
-	droppedParents := []*mtree.Entry{}
+	stripPrefixVisitor := stripPrefixVisitor{
+		prefixes: stripPrexies,
+	}
+	tidyVisitor := tidyVisitor{
+		keepComments: keepComments,
+		keepBlank:    keepBlank,
+	}
+	visitors := []Visitor{
+		&stripPrefixVisitor,
+		&tidyVisitor,
+	}
 
+	dropped := []int{}
 	entries := []mtree.Entry{}
 
 skip:
 	for _, entry := range spec.Entries {
 
-		if !keepComments && entry.Type == mtree.CommentType {
-			continue
-		}
-		if !keepBlank && entry.Type == mtree.BlankType {
-			continue
-		}
-
-		if entry.Parent != nil && slices.Contains(droppedParents, &entry) {
-			entry.Parent = nil
-			entry.Type = mtree.FullType
-			entry.Raw = ""
+		if entry.Parent != nil && slices.Contains(dropped, entry.Parent.Pos) {
+			if entry.Type == mtree.DotDotType {
+				// directory for this .. has been dropped so shall this
+				continue
+			}
+			entry.Parent = entry.Parent.Parent
+			// TODO: i am not sure if this is the correct behavior
+			entry.Raw = strings.TrimPrefix(entry.Raw, " ")
 		}
 
-		if entry.Type == mtree.FullType || entry.Type == mtree.RelativeType {
-			fp, err := entry.Path()
-			// fmt.Println("fp", fp, entry.Name)
+		for _, visitor := range visitors {
+			drop, err := visitor.Visit(&entry)
 			if err != nil {
 				return err
 			}
-			pathSegments := strings.Split(fp, "/")
 
-			for _, prefix := range stripPrexies {
-
-				prefixSegments := strings.Split(prefix, "/")
-				minLen := int(math.Min(float64(len(pathSegments)), float64(len(prefixSegments))))
-				matches := make([]string, minLen)
-				for i := 0; i < minLen; i++ {
-					if pathSegments[i] == prefixSegments[i] {
-						matches[i] = prefixSegments[i]
-					}
-				}
-
-				strip := strings.Join(matches, "/")
-				if entry.Type == mtree.FullType {
-					entry.Name = strings.TrimPrefix(entry.Name, strip)
-					entry.Name = strings.TrimPrefix(entry.Name, "/")
-					if entry.Name == "" {
-						continue skip
-					}
-				} else {
-					if entry.IsDir() {
-						dropDotDot++
-						droppedParents = append(droppedParents, &entry)
-					}
-					if fp == strip {
-						continue skip
-					}
-				}
+			if drop {
+				dropped = append(dropped, entry.Pos)
+				continue skip
 			}
-		} else if dropDotDot > 0 && entry.Type == mtree.DotDotType {
-			dropDotDot--
-			continue skip
 		}
+
 		entries = append(entries, entry)
 	}
 
@@ -141,4 +120,62 @@ skip:
 	spec.WriteTo(writer)
 
 	return nil
+}
+
+type Visitor interface {
+	Visit(entry *mtree.Entry) (bool, error)
+}
+
+type tidyVisitor struct {
+	keepComments bool
+	keepBlank    bool
+}
+
+func (m *tidyVisitor) Visit(entry *mtree.Entry) (bool, error) {
+	if !m.keepComments && entry.Type == mtree.CommentType {
+		return true, nil
+	} else if !m.keepBlank && entry.Type == mtree.BlankType {
+		return true, nil
+	}
+	return false, nil
+}
+
+type stripPrefixVisitor struct {
+	prefixes []string
+}
+
+func (m *stripPrefixVisitor) Visit(entry *mtree.Entry) (bool, error) {
+	if entry.Type != mtree.FullType && entry.Type != mtree.RelativeType {
+		return false, nil
+	}
+
+	fp, err := entry.Path()
+	if err != nil {
+		return false, err
+	}
+	pathSegments := strings.Split(fp, "/")
+
+	for _, prefix := range m.prefixes {
+
+		prefixSegments := strings.Split(prefix, "/")
+		minLen := int(math.Min(float64(len(pathSegments)), float64(len(prefixSegments))))
+		matches := make([]string, minLen)
+		for i := 0; i < minLen; i++ {
+			if pathSegments[i] == prefixSegments[i] {
+				matches[i] = prefixSegments[i]
+			}
+		}
+
+		strip := strings.Join(matches, "/")
+		if entry.Type == mtree.FullType {
+			entry.Name = strings.TrimPrefix(entry.Name, strip)
+			entry.Name = strings.TrimPrefix(entry.Name, "/")
+			if entry.Name == "" {
+				return true, nil
+			}
+		} else if fp == strip {
+			return true, nil
+		}
+	}
+	return false, nil
 }

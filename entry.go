@@ -134,7 +134,10 @@ func (e Entry) String() string {
 	if e.Type == SpecialType || e.Type == FullType || inKeyValSlice("type=dir", e.Keywords) {
 		return fmt.Sprintf("%s %s", e.Name, strings.Join(KeyValToString(e.Keywords), " "))
 	}
-	return fmt.Sprintf("    %s %s", e.Name, strings.Join(KeyValToString(e.Keywords), " "))
+	if e.Parent != nil && e.Type != DotDotType {
+		return fmt.Sprintf("    %s %s", e.Name, strings.Join(KeyValToString(e.Keywords), " "))
+	}
+	return fmt.Sprintf("%s %s", e.Name, strings.Join(KeyValToString(e.Keywords), " "))
 }
 
 // AllKeys returns the full set of KeyVal for the given entry, based on the
