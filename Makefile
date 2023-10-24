@@ -6,31 +6,21 @@ SOURCE_FILES := $(shell find . -type f -name "*.go")
 CLEAN_FILES := *~
 TAGS :=
 ARCHES := linux,386 linux,amd64 linux,arm linux,arm64 linux,mips64 linux,riscv64 openbsd,amd64 windows,amd64 windows,arm64 darwin,amd64 darwin,arm64
-GO_VER := go1.14
 
-default: build validation
+default: build validation lint docs
 
 .PHONY: validation
 validation: .test .vet .cli.test
 
 .PHONY: validation.tags
-validation.tags: .test.tags .vet.tags .cli.test .staticcheck
+validation.tags: .test.tags .vet.tags .cli.test
 
 .PHONY: gocyclo
 gocyclo: .gocyclo
 
 CLEAN_FILES += .gocyclo
-
-.gocyclo:
+.gocyclo: .gocyclo.tool
 	gocyclo -avg -over 15 -ignore 'vendor/*' . && touch $@
-
-.PHONY: staticcheck
-staticcheck: .staticcheck
-
-CLEAN_FILES += .staticcheck
-
-.staticcheck:
-	staticcheck . && touch $@
 
 .PHONY: test
 test: .test
@@ -48,15 +38,13 @@ NO_VENDOR_DIR := $(shell find . -type f -name '*.go' ! -path './vendor*' ! -path
 lint: .lint
 
 CLEAN_FILES += .lint
-
-.lint: $(SOURCE_FILES)
+.lint: .golangci-lint.tool $(SOURCE_FILES)
 	set -e ; golangci-lint run && touch $@
 
 .PHONY: vet
 vet: .vet .vet.tags
 
 CLEAN_FILES += .vet .vet.tags
-
 .vet: $(SOURCE_FILES)
 	go vet $(NO_VENDOR_DIR) && touch $@
 
@@ -67,12 +55,17 @@ CLEAN_FILES += .vet .vet.tags
 cli.test: .cli.test
 
 CLEAN_FILES += .cli.test .cli.test.tags
-
 .cli.test: $(BUILD) $(wildcard ./test/cli/*.sh)
 	@go run ./test/cli-test/main.go ./test/cli/*.sh && touch $@
 
 .cli.test.tags: $(BUILD) $(wildcard ./test/cli/*.sh)
 	@set -e ; for tag in $(TAGS) ; do go run -tags $$tag ./test/cli-test/main.go ./test/cli/*.sh ; done && touch $@
+
+docs: gomtree.1
+
+CLEAN_FILES += gomtree.1
+%.1: %.1.md .go-md2man.tool
+	go-md2man -in $< -out $@
 
 .PHONY: build
 build: $(BUILD)
@@ -80,17 +73,24 @@ build: $(BUILD)
 $(BUILD): $(SOURCE_FILES)
 	go build -ldflags="-X 'main.Version=$(shell git describe --always --dirty)'" -mod=vendor -o $(BUILD) $(BUILDPATH)
 
-install.tools:
-	@go install github.com/fatih/color@latest ; \
-	go install github.com/fzipp/gocyclo/cmd/gocyclo@latest ; \
-	go install honnef.co/go/tools/cmd/staticcheck@latest ; \
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+TOOLS += .gocyclo.tool
+.gocyclo.tool:
+	go install github.com/fzipp/gocyclo/cmd/gocyclo@latest && touch $@
+
+TOOLS += .go-md2man.tool
+.go-md2man.tool:
+	go install github.com/cpuguy83/go-md2man@latest && touch $@
+
+TOOLS += .golangci-lint.tool
+.golangci-lint.tool:
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && touch $@
+
+install.tools: $(TOOLS)
 
 ./bin:
 	mkdir -p $@
 
 CLEAN_FILES += bin
-
 build.arches: ./bin
 	@set -e ;\
 	for pair in $(ARCHES); do \

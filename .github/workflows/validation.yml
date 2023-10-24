@@ -21,8 +21,5 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
 
-    - name: Install tools
-      run: make install.tools
-
     - name: Test
       run: make lint
