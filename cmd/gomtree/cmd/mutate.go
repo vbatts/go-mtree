@@ -5,7 +5,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"slices"
 	"strings"
 
 	cli "github.com/urfave/cli/v2"
@@ -76,20 +75,21 @@ func mutateAction(c *cli.Context) error {
 		&tidyVisitor,
 	}
 
-	dropped := []int{}
+	dropped := map[int]bool{}
 	entries := []mtree.Entry{}
 
 skip:
 	for _, entry := range spec.Entries {
-
-		if entry.Parent != nil && slices.Contains(dropped, entry.Parent.Pos) {
-			if entry.Type == mtree.DotDotType {
-				// directory for this .. has been dropped so shall this
-				continue
+		if entry.Parent != nil {
+			if _, ok := dropped[entry.Parent.Pos]; ok {
+				if entry.Type == mtree.DotDotType {
+					// directory for this .. has been dropped so shall this
+					continue
+				}
+				entry.Parent = entry.Parent.Parent
+				// TODO: i am not sure if this is the correct behavior
+				entry.Raw = strings.TrimPrefix(entry.Raw, " ")
 			}
-			entry.Parent = entry.Parent.Parent
-			// TODO: i am not sure if this is the correct behavior
-			entry.Raw = strings.TrimPrefix(entry.Raw, " ")
 		}
 
 		for _, visitor := range visitors {
@@ -99,7 +99,7 @@ skip:
 			}
 
 			if drop {
-				dropped = append(dropped, entry.Pos)
+				dropped[entry.Pos] = true
 				continue skip
 			}
 		}
