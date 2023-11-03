@@ -117,7 +117,10 @@ skip:
 		}
 	}
 
-	spec.WriteTo(writer)
+	_, err = spec.WriteTo(writer)
+	if err != nil {
+		return fmt.Errorf("writing mtree %s: %w", outputPath, err)
+	}
 
 	return nil
 }
