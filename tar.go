@@ -12,7 +12,7 @@ import (
 	"github.com/vbatts/go-mtree/pkg/govis"
 )
 
-// Streamer creates a file hierarchy out of a tar stream
+// Streamer interface creates a file hierarchy out of a stream
 type Streamer interface {
 	io.ReadCloser
 	Hierarchy() (*DirectoryHierarchy, error)
