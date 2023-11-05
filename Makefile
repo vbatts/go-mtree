@@ -14,7 +14,7 @@ default: build validation
 validation: .test .vet .cli.test
 
 .PHONY: validation.tags
-validation.tags: .test.tags .vet.tags .cli.test .staticcheck
+validation.tags: .test.tags .vet.tags .cli.test
 
 .PHONY: gocyclo
 gocyclo: .gocyclo
@@ -23,14 +23,6 @@ CLEAN_FILES += .gocyclo
 
 .gocyclo:
 	gocyclo -avg -over 15 -ignore 'vendor/*' . && touch $@
-
-.PHONY: staticcheck
-staticcheck: .staticcheck
-
-CLEAN_FILES += .staticcheck
-
-.staticcheck:
-	staticcheck . && touch $@
 
 .PHONY: test
 test: .test
@@ -83,7 +75,6 @@ $(BUILD): $(SOURCE_FILES)
 install.tools:
 	@go install github.com/fatih/color@latest ; \
 	go install github.com/fzipp/gocyclo/cmd/gocyclo@latest ; \
-	go install honnef.co/go/tools/cmd/staticcheck@latest ; \
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 ./bin:
