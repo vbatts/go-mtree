@@ -28,6 +28,10 @@ func NewValidateCommand() *cli.Command {
 				Aliases: []string{"c"},
 				Usage:   "Create a directory hierarchy spec",
 			},
+			&cli.BoolFlag{
+				Name:    "C",
+				Usage:   "Print ('dump') the specification provided by `-f` with full path names",
+			},
 			&cli.StringSliceFlag{
 				Name:    "file",
 				Aliases: []string{"f"},
@@ -102,7 +106,7 @@ func NewValidateCommand() *cli.Command {
 			&cli.StringFlag{
 				Name:  "result-format",
 				Value: "bsd",
-				Usage: "output the validation results using the given format (bsd, json, path)",
+				Usage: "output the validation results/errors using the given format (bsd, json, path)",
 			},
 			&cli.BoolFlag{
 				Name:  "strict",
@@ -256,8 +260,8 @@ func validateAction(c *cli.Context) error {
 	}
 
 	if specKeywords != nil {
-		// If we didn't actually change the set of keywords, we can just use specKeywords.
-		if c.String("use-keywords") == "" && c.String("add-keywords") == "" {
+		// If the user hasn't explicitly changed the keyword set, use the spec's.
+		if c.String("use-keywords") == "" && c.String("add-keywords") == "" && c.String("remove-keywords") == "" {
 			currentKeywords = specKeywords
 		}
 	}
@@ -296,6 +300,35 @@ func validateAction(c *cli.Context) error {
 		}
 		excludes = append(excludes, excludeByPatterns(rootPath, patterns))
 	}
+
+	// -C: dump spec with full paths
+	if c.Bool("C") {
+		if specDh == nil {
+			return fmt.Errorf("-C requires a spec file via -f")
+		}
+		for _, e := range specDh.Entries {
+			if e.Type != mtree.RelativeType && e.Type != mtree.FullType {
+				continue
+			}
+			fp, err := e.Path()
+			if err != nil {
+				return err
+			}
+			var kvparts []string
+			for _, kv := range e.AllKeys() {
+				if mtree.InKeywordSlice(kv.Keyword(), currentKeywords) {
+					kvparts = append(kvparts, string(kv))
+				}
+			}
+			if len(kvparts) > 0 {
+				fmt.Fprintf(os.Stdout, "%s %s\n", fp, strings.Join(kvparts, " "))
+			} else {
+				fmt.Fprintf(os.Stdout, "%s\n", fp)
+			}
+		}
+		return nil
+	}
+
 
 	// -u
 	// Failing early here. Processing is done below.

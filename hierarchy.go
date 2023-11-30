@@ -5,8 +5,7 @@ import (
 	"sort"
 )
 
-// DirectoryHierarchy is the mapped structure for an mtree directory hierarchy
-// spec
+// DirectoryHierarchy is the mapped structure for an mtree directory hierarchy specification.
 type DirectoryHierarchy struct {
 	Entries []Entry
 }
