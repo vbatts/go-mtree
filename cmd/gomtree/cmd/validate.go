@@ -24,6 +24,10 @@ func NewValidateCommand() *cli.Command {
 				Aliases: []string{"c"},
 				Usage:   "Create a directory hierarchy spec",
 			},
+			&cli.BoolFlag{
+				Name:    "C",
+				Usage:   "Print ('dump') the specification provided by `-f` with full path names",
+			},
 			&cli.StringSliceFlag{
 				Name:    "file",
 				Aliases: []string{"f"},
@@ -78,7 +82,7 @@ func NewValidateCommand() *cli.Command {
 			&cli.StringFlag{
 				Name:  "result-format",
 				Value: "bsd",
-				Usage: "output the validation results using the given format (bsd, json, path)",
+				Usage: "output the validation results/errors using the given format (bsd, json, path)",
 			},
 		},
 	}
@@ -243,6 +247,13 @@ func validateAction(c *cli.Context) error {
 	// -d
 	if c.Bool("directory-only") {
 		excludes = append(excludes, mtree.ExcludeNonDirectories)
+	}
+
+	if c.Bool("C") && specDh != nil {
+		specDh.Entries
+		
+
+		return nil
 	}
 
 	// -u

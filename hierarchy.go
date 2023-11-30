@@ -5,11 +5,14 @@ import (
 	"sort"
 )
 
-// DirectoryHierarchy is the mapped structure for an mtree directory hierarchy
-// spec
+// DirectoryHierarchy is the mapped structure for an mtree directory hierarchy specification.
 type DirectoryHierarchy struct {
 	Entries []Entry
 }
+
+var DefaultDirectoryHierarchyFormatter
+type DirectoryHierarchyFormatter interface {}
+
 
 // WriteTo simplifies the output of the resulting hierarchy spec.
 // Satisfies the `io.WriterTo` interface.
