@@ -39,10 +39,10 @@ CLEAN_FILES += .test .test.tags
 NO_VENDOR_DIR := $(shell find . -type f -name '*.go' ! -path './vendor*' ! -path './.git*' ! -path './.vscode*' -exec dirname "{}" \; | sort -u)
 
 .test: $(SOURCE_FILES)
-	go test -v $(NO_VENDOR_DIR) && touch $@
+	go test -p 1 -v $(NO_VENDOR_DIR) && touch $@
 
 .test.tags: $(SOURCE_FILES)
-	set -e ; for tag in $(TAGS) ; do go test -tags $$tag -v $(NO_VENDOR_DIR) ; done && touch $@
+	set -e ; for tag in $(TAGS) ; do go test -p 1 -tags $$tag -v $(NO_VENDOR_DIR) ; done && touch $@
 
 .PHONY: lint
 lint: .lint
