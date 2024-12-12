@@ -7,8 +7,8 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/urfave/cli/v2 v2.27.5
-	golang.org/x/crypto v0.28.0
-	golang.org/x/sys v0.26.0
+	golang.org/x/crypto v0.31.0
+	golang.org/x/sys v0.28.0
 )
 
 require (
