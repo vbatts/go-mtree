@@ -42,6 +42,7 @@ to support xattrs and interacting with tar archives.`
 	}
 	app.Commands = []*cli.Command{
 		cmd.NewValidateCommand(),
+		cmd.NewMtree2JsonCommand(),
 	}
 
 	// Unfortunately urfave/cli is not at good at using DefaultCommand
