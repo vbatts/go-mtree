@@ -24,7 +24,7 @@ ${gomtree} -k uid,gid,size,type,link,nlink,sha256digest -f ${t}/root.mtree -p ${
 
 # Modify it and make sure that it successfully figures out what changed.
 echo "othe data" > "${t}/root/$(printf 'this file has \u042a some unicode !!')"
-! ${gomtree} -k uid,gid,size,type,link,nlink,sha256digest -f ${t}/root.mtree -p ${t}/root
+(! ${gomtree} -k uid,gid,size,type,link,nlink,sha256digest -f ${t}/root.mtree -p ${t}/root)
 
 echo "some data" > "${t}/root/$(printf 'this file has \u042a some unicode !!')"
 ${gomtree} -k uid,gid,size,type,link,nlink,sha256digest -f ${t}/root.mtree -p ${t}/root
