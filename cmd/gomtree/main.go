@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -51,23 +50,20 @@ to support xattrs and interacting with tar archives.`
 	app.OnUsageError = func(ctx *cli.Context, err error, isSubcommand bool) error {
 		if ctx.Command.Name == "gomtree" && strings.Contains(err.Error(), "flag provided but not defined") {
 			runValidate = true
-			return nil
 		}
 		return err
 	}
 
-	if err := app.Run(os.Args); err != nil {
-		fmt.Println(err.Error())
-	}
-
-	// So we run the command again with the validate command as the default.
-	if runValidate {
+	err := app.Run(os.Args)
+	// If it failed, run the command again with the validate command as the
+	// default if it failed.
+	if err != nil && runValidate {
 		app.OnUsageError = nil
 		args := []string{os.Args[0], "validate"}
 		args = append(args, os.Args[1:]...)
-		if err := app.Run(args); err != nil {
-			fmt.Println(err.Error())
-		}
+		err = app.Run(args)
 	}
-
+	if err != nil {
+		logrus.Fatal(err)
+	}
 }

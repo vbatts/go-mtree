@@ -19,7 +19,7 @@ rm -rf ${t}/extract/*.go
 ${gomtree} -K sha256digest -c -p ${t}/extract/ > ${t}/${name}-2.mtree
 
 # this _ought_ to fail because the files are missing now
-! ${gomtree} -f ${t}/${name}-1.mtree -f ${t}/${name}-2.mtree
+(! ${gomtree} -f ${t}/${name}-1.mtree -f ${t}/${name}-2.mtree)
 
 popd
 rm -rf ${t}
