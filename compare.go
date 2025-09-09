@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strconv"
 )
 
 // XXX: Do we need a Difference interface to make it so people can do var x
@@ -253,23 +252,35 @@ func compareEntry(oldEntry, newEntry Entry) ([]KeyDelta, error) {
 
 		// Make a new tar_time.
 		if diffs["tar_time"].Old == nil {
-			time, err := strconv.ParseFloat(timeStateT.Old.Value(), 64)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse old time: %s", err)
+			var (
+				timeSec, timeNsec int64
+				// used to check for trailing characters
+				trailing rune
+			)
+			val := timeStateT.Old.Value()
+			n, _ := fmt.Sscanf(val, "%d.%d%c", &timeSec, &timeNsec, &trailing)
+			if n != 2 {
+				return nil, fmt.Errorf("failed to parse old time: invalid format %q", val)
 			}
 
 			newTime := new(KeyVal)
-			*newTime = KeyVal(fmt.Sprintf("tar_time=%d.000000000", int64(time)))
+			*newTime = KeyVal(fmt.Sprintf("tar_time=%d.%9.9d", timeSec, 0))
 
 			diffs["tar_time"].Old = newTime
 		} else if diffs["tar_time"].New == nil {
-			time, err := strconv.ParseFloat(timeStateT.New.Value(), 64)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse new time: %s", err)
+			var (
+				timeSec, timeNsec int64
+				// used to check for trailing characters
+				trailing rune
+			)
+			val := timeStateT.New.Value()
+			n, _ := fmt.Sscanf(val, "%d.%d%c", &timeSec, &timeNsec, &trailing)
+			if n != 2 {
+				return nil, fmt.Errorf("failed to parse new time: invalid format %q", val)
 			}
 
 			newTime := new(KeyVal)
-			*newTime = KeyVal(fmt.Sprintf("tar_time=%d.000000000", int64(time)))
+			*newTime = KeyVal(fmt.Sprintf("tar_time=%d.%9.9d", timeSec, 0))
 
 			diffs["tar_time"].New = newTime
 		} else {
