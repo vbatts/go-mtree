@@ -3,6 +3,7 @@ package mtree
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 )
 
@@ -405,15 +406,16 @@ func compare(oldDh, newDh *DirectoryHierarchy, keys []Keyword, same bool) ([]Ino
 				return nil, fmt.Errorf("comparison failed %s: %s", path, err)
 			}
 
-			// Now remove "changed" entries that don't match the keys.
+			// Ignore changes to keys not in the requested set.
 			if keys != nil {
-				var filterChanged []KeyDelta
-				for _, keyDiff := range changed {
-					if InKeywordSlice(keyDiff.name.Prefix(), keys) {
-						filterChanged = append(filterChanged, keyDiff)
-					}
-				}
-				changed = filterChanged
+				changed = slices.DeleteFunc(changed, func(delta KeyDelta) bool {
+					name := delta.name.Prefix()
+					return !InKeywordSlice(name, keys) &&
+						// We remap time to tar_time in compareEntry, so we
+						// need to treat them equivalently here.
+						!(name == "time" && InKeywordSlice("tar_time", keys)) &&
+						!(name == "tar_time" && InKeywordSlice("time", keys))
+				})
 			}
 
 			// Check if there were any actual changes.
