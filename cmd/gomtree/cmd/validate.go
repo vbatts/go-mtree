@@ -219,14 +219,6 @@ func validateAction(c *cli.Context) error {
 		if c.String("use-keywords") == "" && c.String("add-keywords") == "" {
 			currentKeywords = specKeywords
 		}
-
-		for _, keyword := range currentKeywords {
-			// As always, time is a special case.
-			// TODO: Fix that.
-			if (keyword == "time" && mtree.InKeywordSlice("tar_time", specKeywords)) || (keyword == "tar_time" && mtree.InKeywordSlice("time", specKeywords)) {
-				continue
-			}
-		}
 	}
 
 	// -p and -T are mutually exclusive
