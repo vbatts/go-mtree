@@ -354,88 +354,61 @@ func compareEntry(oldEntry, newEntry Entry) ([]KeyDelta, error) {
 
 // compare is the actual workhorse for Compare() and CompareSame()
 func compare(oldDh, newDh *DirectoryHierarchy, keys []Keyword, same bool) ([]InodeDelta, error) {
-	// Represents the new and old states for an entry.
-	type stateT struct {
-		Old *Entry
-		New *Entry
-	}
+	toEntryMap := func(dh *DirectoryHierarchy) (map[string]Entry, error) {
+		if dh == nil {
+			// treat nil DirectoryHierarchy as empty
+			return make(map[string]Entry), nil
+		}
 
-	// To deal with different orderings of the entries, use a path-keyed
-	// map to make sure we don't start comparing unrelated entries.
-	diffs := map[string]*stateT{}
-
-	// First, iterate over the old hierarchy. If nil, pretend it's empty.
-	if oldDh != nil {
-		for _, e := range oldDh.Entries {
+		// pre-allocate the map to avoid resizing
+		entries := make(map[string]Entry, len(dh.Entries))
+		for _, e := range dh.Entries {
 			if e.Type == RelativeType || e.Type == FullType {
 				path, err := e.Path()
 				if err != nil {
 					return nil, err
 				}
-
-				// Cannot take &kv because it's the iterator.
-				cEntry := new(Entry)
-				*cEntry = e
-
-				_, ok := diffs[path]
-				if !ok {
-					diffs[path] = &stateT{}
-				}
-				diffs[path].Old = cEntry
+				entries[path] = e
 			}
 		}
+		return entries, nil
 	}
 
-	// Then, iterate over the new hierarchy. If nil, pretend it's empty.
-	if newDh != nil {
-		for _, e := range newDh.Entries {
-			if e.Type == RelativeType || e.Type == FullType {
-				path, err := e.Path()
-				if err != nil {
-					return nil, err
-				}
-
-				// Cannot take &kv because it's the iterator.
-				cEntry := new(Entry)
-				*cEntry = e
-
-				_, ok := diffs[path]
-				if !ok {
-					diffs[path] = &stateT{}
-				}
-				diffs[path].New = cEntry
-			}
-		}
+	oldEntries, err := toEntryMap(oldDh)
+	if err != nil {
+		return nil, err
+	}
+	newEntries, err := toEntryMap(newDh)
+	if err != nil {
+		return nil, err
 	}
 
 	// Now we compute the diff.
 	var results []InodeDelta
-	for path, diff := range diffs {
-		// Invalid
-		if diff.Old == nil && diff.New == nil {
-			return nil, fmt.Errorf("invalid state: both old and new are nil: path=%s", path)
-		}
+	for path := range iterMapsKeys(oldEntries, newEntries) {
+		old, oldHas := oldEntries[path]
+		gnu, gnuHas := newEntries[path] // avoid shadowing "new" builtin
 
 		switch {
 		// Missing
-		case diff.New == nil:
+		case !gnuHas:
 			results = append(results, InodeDelta{
 				diff: Missing,
 				path: path,
-				old:  *diff.Old,
+				old:  old,
 			})
 
 		// Extra
-		case diff.Old == nil:
+		case !oldHas:
 			results = append(results, InodeDelta{
 				diff: Extra,
 				path: path,
-				new:  *diff.New,
+				new:  gnu,
 			})
 
 		// Modified
 		default:
-			changed, err := compareEntry(*diff.Old, *diff.New)
+			changed, err := compareEntry(old, gnu)
 			if err != nil {
 				return nil, fmt.Errorf("comparison failed %s: %s", path, err)
 			}
@@ -457,8 +430,8 @@ func compare(oldDh, newDh *DirectoryHierarchy, keys []Keyword, same bool) ([]Ino
 				results = append(results, InodeDelta{
 					diff: Modified,
 					path: path,
-					old:  *diff.Old,
-					new:  *diff.New,
+					old:  old,
+					new:  gnu,
 					keys: changed,
 				})
 			} else if same {
@@ -467,8 +440,8 @@ func compare(oldDh, newDh *DirectoryHierarchy, keys []Keyword, same bool) ([]Ino
 				results = append(results, InodeDelta{
 					diff: Same,
 					path: path,
-					old:  *diff.Old,
-					new:  *diff.New,
+					old:  old,
+					new:  gnu,
 					keys: changed,
 				})
 			}
