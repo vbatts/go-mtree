@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	cli "github.com/urfave/cli/v2"
@@ -463,19 +464,14 @@ loop:
 				}
 
 				// Only filter out the size keyword.
-				// NOTE: This currently takes advantage of the fact the
-				//       diff.Diff() returns the actual slice to diff.keys.
-				keys := diff.Diff()
-				for idx, k := range keys {
-					// Delete the key if it's "size". Unfortunately in Go you
-					// can't delete from a slice without reassigning it. So we
-					// just overwrite it with the last value.
-					if k.Name() == "size" {
-						if len(keys) < 2 {
-							continue loop
-						}
-						keys[idx] = keys[len(keys)-1]
-					}
+				keys := diff.DiffPtr()
+				*keys = slices.DeleteFunc(*keys, func(kd mtree.KeyDelta) bool {
+					return kd.Name() == "size"
+				})
+				// If there are no key deltas left after filtering, the entry
+				// should be filtered out entirely.
+				if len(*keys) == 0 {
+					continue loop
 				}
 			}
 		}

@@ -77,6 +77,17 @@ func (i InodeDelta) Diff() []KeyDelta {
 	return i.keys
 }
 
+// DiffPtr returns a pointer to the internal slice that would be returned by
+// [InodeDelta.Diff]. This is intended to be used by tools which need to filter
+// aspects of [InodeDelta] entries. If the [DifferenceType] of the inode is not
+// [Modified], then DiffPtr returns nil.
+func (i *InodeDelta) DiffPtr() *[]KeyDelta {
+	if i.diff == Modified {
+		return &i.keys
+	}
+	return nil
+}
+
 // Old returns the value of the inode Entry in the "old" DirectoryHierarchy (as
 // determined by the ordering of parameters to Compare).
 func (i InodeDelta) Old() *Entry {
