@@ -368,6 +368,7 @@ func validateAction(c *cli.Context) error {
 		if isTarSpec(specDh) || c.String("tar") != "" {
 			filters = append(filters, tarKeywordFilter)
 		}
+		filters = append(filters, freebsdCompatKeywordFilter)
 		res = filterDeltas(res, filters...)
 
 		if len(res) > 0 {
@@ -455,6 +456,25 @@ func tarKeywordFilter(delta *mtree.InodeDelta) bool {
 			return kd.Name() == "size"
 		})
 	}
+	return true
+}
+
+// freebsdCompatKeywordFilter removes any deltas where a key is not present in
+// both manifests being compared. This is necessary for compatibility with
+// FreeBSD's mtree(8) but is generally undesireable for most users.
+func freebsdCompatKeywordFilter(delta *mtree.InodeDelta) bool {
+	if delta.Type() != mtree.Modified {
+		return true
+	}
+	keys := delta.DiffPtr()
+	*keys = slices.DeleteFunc(*keys, func(kd mtree.KeyDelta) bool {
+		if kd.Name().Prefix() == "xattr" {
+			// Even in FreeBSD compatibility mode, any xattr changes should
+			// still be treated as a proper change and not filtered out.
+			return false
+		}
+		return kd.Type() != mtree.Modified
+	})
 	return true
 }
 
