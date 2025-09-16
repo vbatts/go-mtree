@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
-	"maps"
 	"slices"
 
 	"github.com/sirupsen/logrus"
@@ -246,31 +245,6 @@ func compareEntry(oldEntry, newEntry Entry) ([]KeyDelta, error) {
 		oldKeys = oldEntry.allKeysMap()
 		newKeys = newEntry.allKeysMap()
 	)
-
-	// Delete any keys which are not present in both maps.
-	keyFilterFn := func(otherMap map[Keyword]KeyVal) func(Keyword, KeyVal) bool {
-		return func(k Keyword, _ KeyVal) bool {
-			switch {
-			case k.Prefix() == "xattr":
-				// xattrs are presented as one keyword to users but are actually
-				// implemented as separate keywords and so we should always include
-				// them (even if the same xattr is not present in both sides).
-				// TODO: I actually think this is not inline with the original
-				//       purpose of this code, but I'm leaving it as-is to not not
-				//       introduce bugs.
-				return false
-			case k == "time" || k == "tar_time":
-				// These have special handling later.
-				return false
-			default:
-				// Drop keys which do not exist in the other entry.
-				_, ok := otherMap[k]
-				return !ok
-			}
-		}
-	}
-	maps.DeleteFunc(oldKeys, keyFilterFn(newKeys))
-	maps.DeleteFunc(newKeys, keyFilterFn(oldKeys))
 
 	// If both tar_time and time were specified in the set of keys, we have to
 	// convert the "time" entries to "tar_time" to allow for tar archive
