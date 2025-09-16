@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -81,9 +82,15 @@ func NewValidateCommand() *cli.Command {
 				Value: "bsd",
 				Usage: "output the validation results using the given format (bsd, json, path)",
 			},
+			&cli.BoolFlag{
+				Name:  "strict",
+				Usage: "enable strict validation of manifests (any discrepancy will result in an error)",
+			},
 		},
 	}
 }
+
+var errValidate = errors.New("manifest validation failed")
 
 func validateAction(c *cli.Context) error {
 	// -list-keywords
@@ -307,18 +314,14 @@ func validateAction(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		if res != nil {
-			out := formatFunc(res)
+		if len(res) > 0 {
+			out := formatFunc(res, c.Bool("strict"))
 			if _, err := os.Stdout.Write([]byte(out)); err != nil {
 				return err
 			}
-
-			// TODO: This should be a flag. Allowing files to be added and
-			//       removed and still returning "it's all good" is simply
-			//       unsafe IMO.
 			for _, diff := range res {
-				if diff.Type() == mtree.Modified {
-					return fmt.Errorf("manifest validation failed")
+				if c.Bool("strict") || diff.Type() == mtree.Modified {
+					return errValidate
 				}
 			}
 		}
@@ -368,21 +371,19 @@ func validateAction(c *cli.Context) error {
 		if isTarSpec(specDh) || c.String("tar") != "" {
 			filters = append(filters, tarKeywordFilter)
 		}
-		filters = append(filters, freebsdCompatKeywordFilter)
+		if !c.Bool("strict") {
+			filters = append(filters, freebsdCompatKeywordFilter)
+		}
 		res = filterDeltas(res, filters...)
 
 		if len(res) > 0 {
-			out := formatFunc(res)
+			out := formatFunc(res, c.Bool("strict"))
 			if _, err := os.Stdout.Write([]byte(out)); err != nil {
 				return err
 			}
-
-			// TODO: This should be a flag. Allowing files to be added and
-			//       removed and still returning "it's all good" is simply
-			//       unsafe IMO.
 			for _, diff := range res {
-				if diff.Type() == mtree.Modified {
-					return fmt.Errorf("manifest validation failed")
+				if c.Bool("strict") || diff.Type() == mtree.Modified {
+					return errValidate
 				}
 			}
 		}
@@ -392,9 +393,9 @@ func validateAction(c *cli.Context) error {
 	return nil
 }
 
-var formats = map[string]func([]mtree.InodeDelta) string{
+var formats = map[string]func([]mtree.InodeDelta, bool) string{
 	// Outputs the errors in the BSD format.
-	"bsd": func(d []mtree.InodeDelta) string {
+	"bsd": func(d []mtree.InodeDelta, strict bool) string {
 		var buffer bytes.Buffer
 		for _, delta := range d {
 			fmt.Fprintln(&buffer, delta)
@@ -403,7 +404,7 @@ var formats = map[string]func([]mtree.InodeDelta) string{
 	},
 
 	// Outputs the full result struct in JSON.
-	"json": func(d []mtree.InodeDelta) string {
+	"json": func(d []mtree.InodeDelta, strict bool) string {
 		var buffer bytes.Buffer
 		if err := json.NewEncoder(&buffer).Encode(d); err != nil {
 			panic(err)
@@ -412,10 +413,10 @@ var formats = map[string]func([]mtree.InodeDelta) string{
 	},
 
 	// Outputs only the paths which failed to validate.
-	"path": func(d []mtree.InodeDelta) string {
+	"path": func(d []mtree.InodeDelta, strict bool) string {
 		var buffer bytes.Buffer
 		for _, delta := range d {
-			if delta.Type() == mtree.Modified {
+			if strict || delta.Type() == mtree.Modified {
 				fmt.Fprintln(&buffer, delta.Path())
 			}
 		}
