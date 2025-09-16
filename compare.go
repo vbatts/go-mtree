@@ -3,7 +3,11 @@ package mtree
 import (
 	"encoding/json"
 	"fmt"
+	"iter"
+	"maps"
 	"slices"
+
+	"github.com/sirupsen/logrus"
 )
 
 // XXX: Do we need a Difference interface to make it so people can do var x
@@ -195,143 +199,151 @@ func (k KeyDelta) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// mapContains is just shorthand for
+//
+//	_, ok := m[k]
+func mapContains[M ~map[K]V, K comparable, V any](m M, k K) bool {
+	_, ok := m[k]
+	return ok
+}
+
+// iterMapsKeys returns an iterator over all of the keys in all of the provided
+// maps, with duplicate keys only being yielded once.
+func iterMapsKeys[M ~map[K]V, K comparable, V any](maps ...M) iter.Seq[K] {
+	seen := map[K]struct{}{}
+	return func(yield func(K) bool) {
+		for _, m := range maps {
+			for k := range m {
+				if _, ok := seen[k]; ok {
+					continue
+				}
+				if !yield(k) {
+					return
+				}
+				seen[k] = struct{}{}
+			}
+		}
+	}
+}
+
+func convertToTarTime(timeVal string) (KeyVal, error) {
+	var (
+		timeSec, timeNsec int64
+		// used to check for trailing characters
+		trailing rune
+	)
+	n, _ := fmt.Sscanf(timeVal, "%d.%d%c", &timeSec, &timeNsec, &trailing)
+	if n != 2 {
+		return "", fmt.Errorf(`failed to parse "time" key: invalid format %q`, timeVal)
+	}
+	return KeyVal(fmt.Sprintf("tar_time=%d.%9.9d", timeSec, 0)), nil
+}
+
 // Like Compare, but for single inode entries only. Used to compute the
 // cached version of inode.keys.
 func compareEntry(oldEntry, newEntry Entry) ([]KeyDelta, error) {
-	// Represents the new and old states for an entry's keys.
-	type stateT struct {
-		Old *KeyVal
-		New *KeyVal
-	}
+	var (
+		oldKeys = oldEntry.allKeysMap()
+		newKeys = newEntry.allKeysMap()
+	)
 
-	diffs := map[Keyword]*stateT{}
-	oldKeys := oldEntry.AllKeys()
-	newKeys := newEntry.AllKeys()
-
-	// Fill the map with the old keys first.
-	for _, kv := range oldKeys {
-		key := kv.Keyword()
-		// only add this diff if the new keys has this keyword
-		if key != "tar_time" && key != "time" && key.Prefix() != "xattr" && len(HasKeyword(newKeys, key)) == 0 {
-			continue
+	// Delete any keys which are not present in both maps.
+	keyFilterFn := func(otherMap map[Keyword]KeyVal) func(Keyword, KeyVal) bool {
+		return func(k Keyword, _ KeyVal) bool {
+			switch {
+			case k.Prefix() == "xattr":
+				// xattrs are presented as one keyword to users but are actually
+				// implemented as separate keywords and so we should always include
+				// them (even if the same xattr is not present in both sides).
+				// TODO: I actually think this is not inline with the original
+				//       purpose of this code, but I'm leaving it as-is to not not
+				//       introduce bugs.
+				return false
+			case k == "time" || k == "tar_time":
+				// These have special handling later.
+				return false
+			default:
+				// Drop keys which do not exist in the other entry.
+				_, ok := otherMap[k]
+				return !ok
+			}
 		}
-
-		// Cannot take &kv because it's the iterator.
-		copy := new(KeyVal)
-		*copy = kv
-
-		_, ok := diffs[key]
-		if !ok {
-			diffs[key] = new(stateT)
-		}
-		diffs[key].Old = copy
 	}
-
-	// Then fill the new keys.
-	for _, kv := range newKeys {
-		key := kv.Keyword()
-		// only add this diff if the old keys has this keyword
-		if key != "tar_time" && key != "time" && key.Prefix() != "xattr" && len(HasKeyword(oldKeys, key)) == 0 {
-			continue
-		}
-
-		// Cannot take &kv because it's the iterator.
-		copy := new(KeyVal)
-		*copy = kv
-
-		_, ok := diffs[key]
-		if !ok {
-			diffs[key] = new(stateT)
-		}
-		diffs[key].New = copy
-	}
-
-	// We need a full list of the keys so we can deal with different keyvalue
-	// orderings.
-	var kws []Keyword
-	for kw := range diffs {
-		kws = append(kws, kw)
-	}
+	maps.DeleteFunc(oldKeys, keyFilterFn(newKeys))
+	maps.DeleteFunc(newKeys, keyFilterFn(oldKeys))
 
 	// If both tar_time and time were specified in the set of keys, we have to
-	// mess with the diffs. This is an unfortunate side-effect of tar archives.
+	// convert the "time" entries to "tar_time" to allow for tar archive
+	// manifests to be compared with proper filesystem manifests.
 	// TODO(cyphar): This really should be abstracted inside keywords.go
-	if InKeywordSlice("tar_time", kws) && InKeywordSlice("time", kws) {
-		// Delete "time".
-		timeStateT := diffs["time"]
-		delete(diffs, "time")
+	if (mapContains(oldKeys, "tar_time") || mapContains(newKeys, "tar_time")) &&
+		(mapContains(oldKeys, "time") || mapContains(newKeys, "time")) {
 
-		// Make a new tar_time.
-		if diffs["tar_time"].Old == nil {
-			var (
-				timeSec, timeNsec int64
-				// used to check for trailing characters
-				trailing rune
-			)
-			val := timeStateT.Old.Value()
-			n, _ := fmt.Sscanf(val, "%d.%d%c", &timeSec, &timeNsec, &trailing)
-			if n != 2 {
-				return nil, fmt.Errorf("failed to parse old time: invalid format %q", val)
+		path, _ := oldEntry.Path()
+		logrus.WithFields(logrus.Fields{
+			"old:tar_time": oldKeys["tar_time"],
+			"new:tar_time": newKeys["tar_time"],
+			"old:time":     oldKeys["time"],
+			"new:time":     newKeys["time"],
+		}).Debugf(`%q: "tar_time" and "time" both present`, path)
+
+		// Clear the "time" keys.
+		oldTime, oldHadTime := oldKeys["time"]
+		delete(oldKeys, "time")
+		newTime, newHadTime := newKeys["time"]
+		delete(newKeys, "time")
+
+		// NOTE: It is possible (though inadvisable) for a manifest to have
+		// both "tar_time" and "time" set. In those cases, we favour the
+		// existing "tar_time" and just ignore the "time" value.
+
+		switch {
+		case oldHadTime && !mapContains(oldKeys, "tar_time"):
+			tarTime, err := convertToTarTime(oldTime.Value())
+			if err != nil {
+				return nil, fmt.Errorf("old entry: %w", err)
 			}
-
-			newTime := new(KeyVal)
-			*newTime = KeyVal(fmt.Sprintf("tar_time=%d.%9.9d", timeSec, 0))
-
-			diffs["tar_time"].Old = newTime
-		} else if diffs["tar_time"].New == nil {
-			var (
-				timeSec, timeNsec int64
-				// used to check for trailing characters
-				trailing rune
-			)
-			val := timeStateT.New.Value()
-			n, _ := fmt.Sscanf(val, "%d.%d%c", &timeSec, &timeNsec, &trailing)
-			if n != 2 {
-				return nil, fmt.Errorf("failed to parse new time: invalid format %q", val)
+			oldKeys["tar_time"] = tarTime
+		case newHadTime && !mapContains(newKeys, "tar_time"):
+			tarTime, err := convertToTarTime(newTime.Value())
+			if err != nil {
+				return nil, fmt.Errorf("new entry: %w", err)
 			}
-
-			newTime := new(KeyVal)
-			*newTime = KeyVal(fmt.Sprintf("tar_time=%d.%9.9d", timeSec, 0))
-
-			diffs["tar_time"].New = newTime
-		} else {
-			return nil, fmt.Errorf("time and tar_time set in the same manifest")
+			newKeys["tar_time"] = tarTime
 		}
 	}
 
 	// Are there any differences?
 	var results []KeyDelta
-	for name, diff := range diffs {
-		// Invalid
-		if diff.Old == nil && diff.New == nil {
-			return nil, fmt.Errorf("invalid state: both old and new are nil: key=%s", name)
-		}
+	for k := range iterMapsKeys(newKeys, oldKeys) {
+		old, oldHas := oldKeys[k]
+		gnu, gnuHas := newKeys[k] // avoid shadowing "new" builtin
 
 		switch {
 		// Missing
-		case diff.New == nil:
+		case !gnuHas:
 			results = append(results, KeyDelta{
 				diff: Missing,
-				name: name,
-				old:  diff.Old.Value(),
+				name: k,
+				old:  old.Value(),
 			})
 
 		// Extra
-		case diff.Old == nil:
+		case !oldHas:
 			results = append(results, KeyDelta{
 				diff: Extra,
-				name: name,
-				new:  diff.New.Value(),
+				name: k,
+				new:  gnu.Value(),
 			})
 
 		// Modified
 		default:
-			if !diff.Old.Equal(*diff.New) {
+			if !old.Equal(gnu) {
 				results = append(results, KeyDelta{
 					diff: Modified,
-					name: name,
-					old:  diff.Old.Value(),
-					new:  diff.New.Value(),
+					name: k,
+					old:  old.Value(),
+					new:  gnu.Value(),
 				})
 			}
 		}
