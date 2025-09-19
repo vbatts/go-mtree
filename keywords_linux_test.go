@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/vbatts/go-mtree/xattr"
 )
 
@@ -21,70 +24,48 @@ func TestXattr(t *testing.T) {
 		testDir = "."
 	}
 	dir, err := os.MkdirTemp(testDir, "test.xattrs.")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.RemoveAll(dir)
-	fh, err := os.Create(filepath.Join(dir, "file"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = fh.WriteString("howdy")
-	if err != nil {
-		t.Errorf("failed to write string: %s", err)
-	}
-	err = fh.Sync()
-	if err != nil {
-		t.Errorf("failed to sync file: %s", err)
-	}
-	if _, err := fh.Seek(0, 0); err != nil {
-		t.Fatal(err)
-	}
 
-	if err := os.Symlink("./no/such/path", filepath.Join(dir, "symlink")); err != nil {
-		t.Fatal(err)
-	}
+	fh, err := os.Create(filepath.Join(dir, "file"))
+	require.NoError(t, err)
+
+	_, err = fh.WriteString("howdy")
+	require.NoError(t, err)
+
+	err = fh.Sync()
+	require.NoError(t, err)
+
+	_, err = fh.Seek(0, 0)
+	require.NoError(t, err)
+
+	require.NoError(t, os.Symlink("./no/such/path", filepath.Join(dir, "symlink")))
 
 	if err := xattr.Set(dir, "user.test", []byte("directory")); err != nil {
 		t.Skipf("skipping: %q does not support xattrs", dir)
 	}
-	if err := xattr.Set(filepath.Join(dir, "file"), "user.test", []byte("regular file")); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, xattr.Set(filepath.Join(dir, "file"), "user.test", []byte("regular file")))
 
 	dirstat, err := os.Lstat(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	// Check the directory
 	kvs, err := xattrKeywordFunc(dir, dirstat, nil)
-	if err != nil {
-		t.Error(err)
-	}
-	if len(kvs) == 0 {
-		t.Errorf("expected a keyval; got none")
-	}
+	require.NoError(t, err, "xattr keyword fn")
+	assert.NotEmpty(t, kvs, "expected to get a keyval from xattr keyword fn")
 
 	filestat, err := fh.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	// Check the regular file
 	kvs, err = xattrKeywordFunc(filepath.Join(dir, "file"), filestat, fh)
-	if err != nil {
-		t.Error(err)
-	}
-	if len(kvs) == 0 {
-		t.Errorf("expected a keyval; got none")
-	}
+	require.NoError(t, err, "xattr keyword fn")
+	assert.NotEmpty(t, kvs, "expected to get a keyval from xattr keyword fn")
 
 	linkstat, err := os.Lstat(filepath.Join(dir, "symlink"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	// Check a broken symlink
 	_, err = xattrKeywordFunc(filepath.Join(dir, "symlink"), linkstat, nil)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err, "xattr keyword fn broken symlink")
 }

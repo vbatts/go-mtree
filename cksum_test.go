@@ -3,6 +3,9 @@ package mtree
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -14,18 +17,11 @@ var (
 // testing that the cksum function matches that of cksum(1) utility (silly POSIX crc32)
 func TestCksum(t *testing.T) {
 	fh, err := os.Open(checkFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer fh.Close()
+
 	sum, i, err := cksum(fh)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if i != checkSize {
-		t.Errorf("%q: expected size %d, got %d", checkFile, checkSize, i)
-	}
-	if sum != checkSum {
-		t.Errorf("%q: expected sum %d, got %d", checkFile, checkSum, sum)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, checkSize, i, "checksum size mismatch")
+	assert.Equal(t, checkSum, sum, "checksum mismatch")
 }

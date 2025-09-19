@@ -9,28 +9,37 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func pprintInodeDeltas(t *testing.T, deltas []InodeDelta) {
+	for idx, delta := range deltas {
+		var str string
+		if buf, err := json.MarshalIndent(delta, "", "  "); err == nil {
+			str = string(buf)
+		} else {
+			str = delta.String()
+		}
+		t.Logf("diff[%d] = %s", idx, str)
+	}
+}
 
 // simple walk of current directory, and immediately check it.
 // may not be parallelizable.
 func TestCompare(t *testing.T) {
 	old, err := Walk(".", nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "walk .")
 
 	new, err := Walk(".", nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "walk .")
 
-	diffs, err := Compare(old, new, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	res, err := Compare(old, new, nil)
+	require.NoError(t, err, "compare")
 
-	if len(diffs) > 0 {
-		t.Errorf("%#v", diffs)
+	if !assert.Empty(t, res, "compare after no changes should have no diff") {
+		pprintInodeDeltas(t, res)
 	}
 }
 
@@ -40,72 +49,42 @@ func TestCompareModified(t *testing.T) {
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
-	if err := os.WriteFile(tmpfile, []byte("some content here"), 0666); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpfile, []byte("some content here"), 0666))
 
 	tmpdir := filepath.Join(dir, "testdir")
-	if err := os.Mkdir(tmpdir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(tmpdir, 0755))
 
 	tmpsubfile := filepath.Join(tmpdir, "anotherfile")
-	if err := os.WriteFile(tmpsubfile, []byte("some different content"), 0666); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpsubfile, []byte("some different content"), 0666))
 
 	// Walk the current state.
 	old, err := Walk(dir, nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoErrorf(t, err, "walk %s", dir)
 
 	// Overwrite the content in one of the files.
-	if err := os.WriteFile(tmpsubfile, []byte("modified content"), 0666); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpsubfile, []byte("modified content"), 0666))
 
 	// Walk the new state.
 	new, err := Walk(dir, nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoErrorf(t, err, "walk %s", dir)
 
 	// Compare.
 	diffs, err := Compare(old, new, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "compare")
 
 	// 1 object
-	if len(diffs) != 1 {
-		t.Errorf("expected the diff length to be 1, got %d", len(diffs))
-		for i, diff := range diffs {
-			t.Logf("diff[%d] = %#v", i, diff)
-		}
+	if !assert.Len(t, diffs, 1, "unexpected diff count") {
+		pprintInodeDeltas(t, diffs)
 	}
 
 	// These cannot fail.
 	tmpsubfile, _ = filepath.Rel(dir, tmpsubfile)
-
 	for _, diff := range diffs {
-		switch diff.Path() {
-		case tmpsubfile:
-			if diff.Type() != Modified {
-				t.Errorf("unexpected diff type for %s: %s", diff.Path(), diff.Type())
-			}
-
-			if diff.Diff() == nil {
-				t.Errorf("expect to not get nil for .Diff()")
-			}
-
-			old := diff.Old()
-			new := diff.New()
-			if old == nil || new == nil {
-				t.Errorf("expected to get (!nil, !nil) for (.Old, .New), got (%#v, %#v)", old, new)
-			}
-		default:
-			t.Errorf("unexpected diff found: %#v", diff)
+		if assert.Equal(t, tmpsubfile, diff.Path()) {
+			assert.Equalf(t, Modified, diff.Type(), "unexpected diff type for %s", diff.Path())
+			assert.NotNil(t, diff.Diff(), "Diff for modified diff")
+			assert.NotNil(t, diff.Old(), "Old for modified diff")
+			assert.NotNil(t, diff.New(), "New for modified diff")
 		}
 	}
 }
@@ -116,57 +95,34 @@ func TestCompareMissing(t *testing.T) {
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
-	if err := os.WriteFile(tmpfile, []byte("some content here"), 0666); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpfile, []byte("some content here"), 0666))
 
 	tmpdir := filepath.Join(dir, "testdir")
-	if err := os.Mkdir(tmpdir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(tmpdir, 0755))
 
 	tmpsubfile := filepath.Join(tmpdir, "anotherfile")
-	if err := os.WriteFile(tmpsubfile, []byte("some different content"), 0666); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpsubfile, []byte("some different content"), 0666))
 
 	// Walk the current state.
 	old, err := Walk(dir, nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoErrorf(t, err, "walk %s", dir)
 
 	// Delete the objects.
-	if err := os.RemoveAll(tmpfile); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.RemoveAll(tmpsubfile); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.RemoveAll(tmpdir); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.RemoveAll(tmpfile))
+	require.NoError(t, os.RemoveAll(tmpsubfile))
+	require.NoError(t, os.RemoveAll(tmpdir))
 
 	// Walk the new state.
 	new, err := Walk(dir, nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoErrorf(t, err, "walk %s", dir)
 
 	// Compare.
 	diffs, err := Compare(old, new, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "compare")
 
 	// 3 objects + the changes to '.'
-	if len(diffs) != 4 {
-		t.Errorf("expected the diff length to be 4, got %d", len(diffs))
-		for i, diff := range diffs {
-			t.Logf("diff[%d] = %#v", i, diff)
-		}
+	if !assert.Len(t, diffs, 4, "unexpected diff count") {
+		pprintInodeDeltas(t, diffs)
 	}
 
 	// These cannot fail.
@@ -179,19 +135,10 @@ func TestCompareMissing(t *testing.T) {
 		case ".":
 			// ignore these changes
 		case tmpfile, tmpdir, tmpsubfile:
-			if diff.Type() != Missing {
-				t.Errorf("unexpected diff type for %s: %s", diff.Path(), diff.Type())
-			}
-
-			if diff.Diff() != nil {
-				t.Errorf("expect to get nil for .Diff(), got %#v", diff.Diff())
-			}
-
-			old := diff.Old()
-			new := diff.New()
-			if old == nil || new != nil {
-				t.Errorf("expected to get (!nil, nil) for (.Old, .New), got (%#v, %#v)", old, new)
-			}
+			assert.Equalf(t, Missing, diff.Type(), "unexpected diff type for %s", diff.Path())
+			assert.Nil(t, diff.Diff(), "Diff for missing diff")
+			assert.NotNil(t, diff.Old(), "Old for missing diff")
+			assert.Nil(t, diff.New(), "New for missing diff")
 		default:
 			t.Errorf("unexpected diff found: %#v", diff)
 		}
@@ -204,44 +151,29 @@ func TestCompareExtra(t *testing.T) {
 
 	// Walk the current state.
 	old, err := Walk(dir, nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoErrorf(t, err, "walk %s", dir)
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
-	if err := os.WriteFile(tmpfile, []byte("some content here"), 0666); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpfile, []byte("some content here"), 0666))
 
 	tmpdir := filepath.Join(dir, "testdir")
-	if err := os.Mkdir(tmpdir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(tmpdir, 0755))
 
 	tmpsubfile := filepath.Join(tmpdir, "anotherfile")
-	if err := os.WriteFile(tmpsubfile, []byte("some different content"), 0666); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpsubfile, []byte("some different content"), 0666))
 
 	// Walk the new state.
 	new, err := Walk(dir, nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoErrorf(t, err, "walk %s", dir)
 
 	// Compare.
 	diffs, err := Compare(old, new, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "compare")
 
 	// 3 objects + the changes to '.'
-	if len(diffs) != 4 {
-		t.Errorf("expected the diff length to be 4, got %d", len(diffs))
-		for i, diff := range diffs {
-			t.Logf("diff[%d] = %#v", i, diff)
-		}
+	if !assert.Len(t, diffs, 4, "unexpected diff count") {
+		pprintInodeDeltas(t, diffs)
 	}
 
 	// These cannot fail.
@@ -254,73 +186,47 @@ func TestCompareExtra(t *testing.T) {
 		case ".":
 			// ignore these changes
 		case tmpfile, tmpdir, tmpsubfile:
-			if diff.Type() != Extra {
-				t.Errorf("unexpected diff type for %s: %s", diff.Path(), diff.Type())
-			}
-
-			if diff.Diff() != nil {
-				t.Errorf("expect to get nil for .Diff(), got %#v", diff.Diff())
-			}
-
-			old := diff.Old()
-			new := diff.New()
-			if old != nil || new == nil {
-				t.Errorf("expected to get (!nil, nil) for (.Old, .New), got (%#v, %#v)", old, new)
-			}
+			assert.Equalf(t, Extra, diff.Type(), "unexpected diff type for %s", diff.Path())
+			assert.Nil(t, diff.Diff(), "Diff for extra diff")
+			assert.Nil(t, diff.Old(), "Old for extra diff")
+			assert.NotNil(t, diff.New(), "New for extra diff")
 		default:
 			t.Errorf("unexpected diff found: %#v", diff)
 		}
 	}
 }
 
-func TestCompareKeys(t *testing.T) {
+func TestCompareKeySubset(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
-	if err := os.WriteFile(tmpfile, []byte("some content here"), 0666); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpfile, []byte("some content here"), 0666))
 
 	tmpdir := filepath.Join(dir, "testdir")
-	if err := os.Mkdir(tmpdir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(tmpdir, 0755))
 
 	tmpsubfile := filepath.Join(tmpdir, "anotherfile")
-	if err := os.WriteFile(tmpsubfile, []byte("aaa"), 0666); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpsubfile, []byte("aaa"), 0666))
 
 	// Walk the current state.
 	old, err := Walk(dir, nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoErrorf(t, err, "walk %s", dir)
 
 	// Overwrite the content in one of the files, but without changing the size.
-	if err := os.WriteFile(tmpsubfile, []byte("bbb"), 0666); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpsubfile, []byte("bbb"), 0666))
 
 	// Walk the new state.
 	new, err := Walk(dir, nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoErrorf(t, err, "walk %s", dir)
 
 	// Compare.
 	diffs, err := Compare(old, new, []Keyword{"size"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "compare")
 
 	// 0 objects
-	if len(diffs) != 0 {
-		t.Errorf("expected the diff length to be 0, got %d", len(diffs))
-		for i, diff := range diffs {
-			t.Logf("diff[%d] = %#v", i, diff)
-		}
+	if !assert.Empty(t, diffs, "size-only compare should not return any entries") {
+		pprintInodeDeltas(t, diffs)
 	}
 }
 
@@ -330,19 +236,13 @@ func TestTarCompare(t *testing.T) {
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
-	if err := os.WriteFile(tmpfile, []byte("some content"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpfile, []byte("some content"), 0644))
 
 	tmpdir := filepath.Join(dir, "testdir")
-	if err := os.Mkdir(tmpdir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Mkdir(tmpdir, 0755))
 
 	tmpsubfile := filepath.Join(tmpdir, "anotherfile")
-	if err := os.WriteFile(tmpsubfile, []byte("aaa"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpsubfile, []byte("aaa"), 0644))
 
 	// Create a tar-like archive.
 	compareFiles := []fakeFile{
@@ -357,43 +257,33 @@ func TestTarCompare(t *testing.T) {
 
 		// Change the time to something known with nanosec != 0.
 		chtime := time.Unix(file.Sec, 987654321)
-		if err := os.Chtimes(path, chtime, chtime); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, os.Chtimes(path, chtime, chtime))
 	}
 
 	// Walk the current state.
 	old, err := Walk(dir, nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoErrorf(t, err, "walk %s", dir)
 
 	ts, err := makeTarStream(compareFiles)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "make tar stream")
 
 	str := NewTarStreamer(bytes.NewBuffer(ts), nil, append(DefaultTarKeywords, "sha1"))
-	if _, err = io.Copy(io.Discard, str); err != nil && err != io.EOF {
-		t.Fatal(err)
-	}
-	if err = str.Close(); err != nil {
-		t.Fatal(err)
-	}
+
+	n, err := io.Copy(io.Discard, str)
+	require.NoError(t, err, "read full tar stream")
+	require.Greater(t, n, int64(0), "tar stream should be non-empty")
+	require.NoError(t, str.Close(), "close tar stream")
 
 	new, err := str.Hierarchy()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "TarStreamer Hierarchy")
+	require.NotNil(t, new, "TarStreamer Hierarchy")
 
 	// Compare.
 	diffs, err := Compare(old, new, append(DefaultTarKeywords, "sha1"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "compare")
 
-	// 0 objects
-	if len(diffs) != 0 {
+	// 0 objects, but there are bugs in tar generation.
+	if len(diffs) > 0 {
 		actualFailure := false
 		for i, delta := range diffs {
 			// XXX: Tar generation is slightly broken, so we need to ignore some bugs.
@@ -429,7 +319,7 @@ func TestTarCompare(t *testing.T) {
 			if err == nil {
 				t.Logf("FAILURE: diff[%d] = %s", i, string(buf))
 			} else {
-				t.Logf("FAILURE: diff[%d] = %#v", i, delta)
+				t.Logf("FAILURE: diff[%d] = %s", i, delta)
 			}
 		}
 
