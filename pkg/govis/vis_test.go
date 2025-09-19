@@ -18,34 +18,37 @@
 package govis
 
 import (
+	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestVisUnchanged(t *testing.T) {
 	for _, test := range []struct {
+		name  string
 		input string
 		flag  VisFlag
 	}{
-		{"", DefaultVisFlags},
-		{"helloworld", DefaultVisFlags},
-		{"THIS_IS_A_TEST1234", DefaultVisFlags},
-		{"SomeEncodingsAreCool", DefaultVisFlags},
-		{"spaces are totally safe", DefaultVisFlags &^ VisSpace},
-		{"tabs\tare\talso\tsafe!!", DefaultVisFlags &^ VisTab},
-		{"just\a\atrustme\r\b\b!!", DefaultVisFlags | VisSafe},
+		{"Empty", "", DefaultVisFlags},
+		{"Plain1", "helloworld", DefaultVisFlags},
+		{"Plain2", "THIS_IS_A_TEST1234", DefaultVisFlags},
+		{"Plain3", "SomeEncodingsAreCool", DefaultVisFlags},
+		{"Spaces", "spaces are totally safe", DefaultVisFlags &^ VisSpace},
+		{"Tabs", "tabs\tare\talso\tsafe!!", DefaultVisFlags &^ VisTab},
+		{"BasicCtrlChars", "just\a\atrustme\r\b\b!!", DefaultVisFlags | VisSafe},
 	} {
-		enc, err := Vis(test.input, test.flag)
-		if err != nil {
-			t.Errorf("unexpected error with %q: %s", test, err)
-		}
-		if enc != test.input {
-			t.Errorf("expected encoding of %q (flag=%q) to be unchanged, got %q", test.input, test.flag, enc)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			enc, err := Vis(test.input, test.flag)
+			require.NoErrorf(t, err, "vis(%q, %s)", test.input, test.flag)
+			assert.Equalf(t, test.input, enc, "encoding of vis(%q, %s) should be unchanged", test.input, test.flag)
+		})
 	}
 }
 
 func TestVisFlags(t *testing.T) {
-	for _, test := range []struct {
+	for idx, test := range []struct {
 		input  string
 		output string
 		flag   VisFlag
@@ -100,13 +103,11 @@ func TestVisFlags(t *testing.T) {
 		{"'3Ze\u050e|\u02del\u069du-Rpct4+Z5b={@_{b", `'3Ze\M-T\M^N|\M-K\M^^l\M-Z\M^]u-Rpct4+Z5b={@_{b`, VisGlob},
 		{"'3Ze\u050e|\u02del\u069du-Rpct4+Z5b={@_{b", `'3Ze\324\216|\313\236l\332\235u-Rpct4+Z5b={@_{b`, VisGlob | VisOctal},
 	} {
-		enc, err := Vis(test.input, test.flag)
-		if err != nil {
-			t.Errorf("unexpected error with %q: %s", test, err)
-		}
-		if enc != test.output {
-			t.Errorf("expected vis(%q, flag=%b) = %q, got %q", test.input, test.flag, test.output, enc)
-		}
+		t.Run(fmt.Sprintf("Test%.2d", idx), func(t *testing.T) {
+			enc, err := Vis(test.input, test.flag)
+			require.NoErrorf(t, err, "vis(%q, %s)", test.input, test.flag)
+			assert.Equalf(t, test.output, enc, "vis(%q, %s)", test.input, test.flag)
+		})
 	}
 }
 
@@ -116,12 +117,10 @@ func TestVisChanged(t *testing.T) {
 		"THIS\\IS_A_TEST1234",
 		"AC_Ra\u00edz_Certic\u00e1mara_S.A..pem",
 	} {
-		enc, err := Vis(test, DefaultVisFlags)
-		if err != nil {
-			t.Errorf("unexpected error with %q: %s", test, err)
-		}
-		if enc == test {
-			t.Errorf("expected encoding of %q to be changed", test)
-		}
+		t.Run(test, func(t *testing.T) {
+			enc, err := Vis(test, DefaultVisFlags)
+			require.NoErrorf(t, err, "vis(%q)", test)
+			assert.NotEqualf(t, test, enc, "encoding of %q should be different to original", test)
+		})
 	}
 }
