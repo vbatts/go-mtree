@@ -12,11 +12,10 @@ func TestWalk(t *testing.T) {
 	}
 	numEntries := countTypes(dh)
 
-	fh, err := os.CreateTemp("", "walk.")
+	fh, err := os.CreateTemp(t.TempDir(), "walk.")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(fh.Name())
 	defer fh.Close()
 
 	if _, err = dh.WriteTo(fh); err != nil {

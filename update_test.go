@@ -23,11 +23,7 @@ func init() {
 //gocyclo:ignore
 func TestUpdate(t *testing.T) {
 	content := []byte("I know half of you half as well as I ought to")
-	dir, err := os.MkdirTemp("", "test-check-keywords")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir) // clean up
+	dir := t.TempDir()
 
 	tmpfn := filepath.Join(dir, "tmpfile")
 	if err := os.WriteFile(tmpfn, content, 0666); err != nil {
