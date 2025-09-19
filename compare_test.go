@@ -36,11 +36,7 @@ func TestCompare(t *testing.T) {
 
 //gocyclo:ignore
 func TestCompareModified(t *testing.T) {
-	dir, err := os.MkdirTemp("", "test-compare-modified")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
@@ -116,11 +112,7 @@ func TestCompareModified(t *testing.T) {
 
 //gocyclo:ignore
 func TestCompareMissing(t *testing.T) {
-	dir, err := os.MkdirTemp("", "test-compare-missing")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
@@ -208,11 +200,7 @@ func TestCompareMissing(t *testing.T) {
 
 //gocyclo:ignore
 func TestCompareExtra(t *testing.T) {
-	dir, err := os.MkdirTemp("", "test-compare-extra")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	// Walk the current state.
 	old, err := Walk(dir, nil, append(DefaultKeywords, "sha1"), nil)
@@ -286,11 +274,7 @@ func TestCompareExtra(t *testing.T) {
 }
 
 func TestCompareKeys(t *testing.T) {
-	dir, err := os.MkdirTemp("", "test-compare-keys")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")
@@ -342,11 +326,7 @@ func TestCompareKeys(t *testing.T) {
 
 //gocyclo:ignore
 func TestTarCompare(t *testing.T) {
-	dir, err := os.MkdirTemp("", "test-compare-tar")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	// Create a bunch of objects.
 	tmpfile := filepath.Join(dir, "tmpfile")

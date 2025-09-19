@@ -30,11 +30,7 @@ func TestCheck(t *testing.T) {
 // only check again for size and sha1, and ignore time, and ensure it passes
 func TestCheckKeywords(t *testing.T) {
 	content := []byte("I know half of you half as well as I ought to")
-	dir, err := os.MkdirTemp("", "test-check-keywords")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir) // clean up
+	dir := t.TempDir()
 
 	tmpfn := filepath.Join(dir, "tmpfile")
 	if err := os.WriteFile(tmpfn, content, 0666); err != nil {
@@ -119,11 +115,7 @@ func TestDefaultBrokenLink(t *testing.T) {
 
 // https://github.com/vbatts/go-mtree/issues/8
 func TestTimeComparison(t *testing.T) {
-	dir, err := os.MkdirTemp("", "test-time.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	// This is the format of time from FreeBSD
 	spec := `
@@ -164,11 +156,7 @@ func TestTimeComparison(t *testing.T) {
 }
 
 func TestTarTime(t *testing.T) {
-	dir, err := os.MkdirTemp("", "test-tar-time.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	// This is the format of time from FreeBSD
 	spec := `
@@ -218,11 +206,7 @@ func TestTarTime(t *testing.T) {
 }
 
 func TestIgnoreComments(t *testing.T) {
-	dir, err := os.MkdirTemp("", "test-comments.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	// This is the format of time from FreeBSD
 	spec := `
@@ -287,11 +271,7 @@ func TestIgnoreComments(t *testing.T) {
 }
 
 func TestCheckNeedsEncoding(t *testing.T) {
-	dir, err := os.MkdirTemp("", "test-needs-encoding")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	fh, err := os.Create(filepath.Join(dir, "file[ "))
 	if err != nil {

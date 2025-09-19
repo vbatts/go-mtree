@@ -72,11 +72,7 @@ func (fs *MockFsEval) KeywordFunc(fn KeywordFunc) KeywordFunc {
 
 //gocyclo:ignore
 func TestCheckFsEval(t *testing.T) {
-	dir, err := os.MkdirTemp("", "test-check-fs-eval")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir) // clean up
+	dir := t.TempDir()
 
 	content := []byte("If you hide your ignorance, no one will hit you and you'll never learn.")
 	tmpfn := filepath.Join(dir, "tmpfile")
