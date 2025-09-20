@@ -19,6 +19,8 @@
 package govis
 
 import (
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -43,6 +45,25 @@ const (
 
 	VisWhite VisFlag = (VisSpace | VisTab | VisNewline)
 )
+
+// errUnknownVisFlagsError is a special value that lets you use [errors.Is]
+// with [unknownVisFlagsError]. Don't actually return this value, use
+// [unknownVisFlagsError] instead!
+var errUnknownVisFlagsError = errors.New("unknown or unsupported vis flags")
+
+// unknownVisFlagsError represents an error caused by unknown [VisFlag]s being
+// passed to [Vis] or [Unvis].
+type unknownVisFlagsError struct {
+	flags VisFlag
+}
+
+func (err unknownVisFlagsError) Is(target error) bool {
+	return target == errUnknownVisFlagsError
+}
+
+func (err unknownVisFlagsError) Error() string {
+	return fmt.Sprintf("%s contains unknown or unsupported flags %s", err.flags, err.flags&^visMask)
+}
 
 // String pretty-prints VisFlag.
 func (vflags VisFlag) String() string {

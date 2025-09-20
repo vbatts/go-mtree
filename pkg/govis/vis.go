@@ -59,14 +59,14 @@ func isgraph(ch rune) bool {
 // the plus side this is actually a benefit on the encoding side (it will
 // always work with the simple unvis(3) implementation). It also means that we
 // don't have to worry about different multi-byte encodings.
-func vis(b byte, flag VisFlag) (string, error) {
+func vis(b byte, flag VisFlag) string {
 	// Treat the single-byte character as a rune.
 	ch := rune(b)
 
 	// XXX: This is quite a horrible thing to support.
 	if flag&VisHTTPStyle == VisHTTPStyle {
 		if !ishttp(ch) {
-			return "%" + fmt.Sprintf("%.2X", ch), nil
+			return "%" + fmt.Sprintf("%.2X", ch)
 		}
 	}
 
@@ -90,31 +90,31 @@ func vis(b byte, flag VisFlag) (string, error) {
 		if ch == '\\' && flag&VisNoSlash == 0 {
 			encoded += "\\"
 		}
-		return encoded, nil
+		return encoded
 	}
 
 	// Try to use C-style escapes first.
 	if flag&VisCStyle == VisCStyle {
 		switch ch {
 		case ' ':
-			return "\\s", nil
+			return "\\s"
 		case '\n':
-			return "\\n", nil
+			return "\\n"
 		case '\r':
-			return "\\r", nil
+			return "\\r"
 		case '\b':
-			return "\\b", nil
+			return "\\b"
 		case '\a':
-			return "\\a", nil
+			return "\\a"
 		case '\v':
-			return "\\v", nil
+			return "\\v"
 		case '\t':
-			return "\\t", nil
+			return "\\t"
 		case '\f':
-			return "\\f", nil
+			return "\\f"
 		case '\x00':
 			// Output octal just to be safe.
-			return "\\000", nil
+			return "\\000"
 		}
 	}
 
@@ -123,7 +123,7 @@ func vis(b byte, flag VisFlag) (string, error) {
 	// encoded as octal.
 	if flag&VisOctal == VisOctal || isgraph(ch) || ch&0x7f == ' ' {
 		// Always output three-character octal just to be safe.
-		return fmt.Sprintf("\\%.3o", ch), nil
+		return fmt.Sprintf("\\%.3o", ch)
 	}
 
 	// Now we have to output meta or ctrl escapes. As far as I can tell, this
@@ -154,25 +154,20 @@ func vis(b byte, flag VisFlag) (string, error) {
 		encoded += fmt.Sprintf("-%c", b)
 	}
 
-	return encoded, nil
+	return encoded
 }
 
 // Vis encodes the provided string to a BSD-compatible encoding using BSD's
 // vis() flags. However, it will correctly handle multi-byte encoding (which is
 // not done properly by BSD's vis implementation).
-func Vis(src string, flag VisFlag) (string, error) {
-	if flag&visMask != flag {
-		return "", fmt.Errorf("vis: flag %q contains unknown or unsupported flags", flag)
+func Vis(src string, flags VisFlag) (string, error) {
+	if unknown := flags &^ visMask; unknown != 0 {
+		return "", unknownVisFlagsError{flags: flags}
 	}
 
 	output := ""
 	for _, ch := range []byte(src) {
-		encodedCh, err := vis(ch, flag)
-		if err != nil {
-			return "", err
-		}
-		output += encodedCh
+		output += vis(ch, flags)
 	}
-
 	return output, nil
 }

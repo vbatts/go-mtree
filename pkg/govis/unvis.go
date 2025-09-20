@@ -19,9 +19,17 @@
 package govis
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"unicode"
+)
+
+var (
+	errEndOfString       = errors.New("unexpectedly reached end of string")
+	errUnknownEscapeChar = errors.New("unknown escape character")
+	errOutsideLatin1     = errors.New("outside latin-1 encoding")
+	errParseDigit        = errors.New("could not parse digit")
 )
 
 // unvisParser stores the current state of the token parser.
@@ -39,7 +47,7 @@ func (p *unvisParser) Next() {
 // Peek gets the current token.
 func (p *unvisParser) Peek() (rune, error) {
 	if p.idx >= len(p.tokens) {
-		return unicode.ReplacementChar, fmt.Errorf("tried to read past end of token list")
+		return unicode.ReplacementChar, errEndOfString
 	}
 	return p.tokens[p.idx], nil
 }
@@ -75,23 +83,16 @@ func newParser(input string, flag VisFlag) *unvisParser {
 func unvisPlainRune(p *unvisParser) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
-		return nil, fmt.Errorf("plain rune: %c", ch)
+		return nil, fmt.Errorf("plain rune: %w", err)
 	}
 	p.Next()
-
-	// XXX: Maybe we should not be converting to runes and then back to strings
-	//      here. Are we sure that the byte-for-byte representation is the
-	//      same? If the bytes change, then using these strings for paths will
-	//      break...
-
-	str := string(ch)
-	return []byte(str), nil
+	return []byte(string(ch)), nil
 }
 
 func unvisEscapeCStyle(p *unvisParser) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
-		return nil, fmt.Errorf("escape hex: %s", err)
+		return nil, fmt.Errorf("escape cstyle: %w", err)
 	}
 
 	output := ""
@@ -120,7 +121,7 @@ func unvisEscapeCStyle(p *unvisParser) ([]byte, error) {
 		// Hidden marker.
 	default:
 		// XXX: We should probably allow falling through and return "\" here...
-		return nil, fmt.Errorf("escape cstyle: unknown escape character: %q", ch)
+		return nil, fmt.Errorf("escape cstyle: %w %q", errUnknownEscapeChar, ch)
 	}
 
 	p.Next()
@@ -136,7 +137,7 @@ func unvisEscapeDigits(p *unvisParser, base int, force bool) ([]byte, error) {
 			if !force && i != 0xFF {
 				break
 			}
-			return nil, fmt.Errorf("escape base %d: %s", base, err)
+			return nil, fmt.Errorf("escape base %d: %w", base, err)
 		}
 
 		digit, err := strconv.ParseInt(string(ch), base, 8)
@@ -144,7 +145,7 @@ func unvisEscapeDigits(p *unvisParser, base int, force bool) ([]byte, error) {
 			if !force && i != 0xFF {
 				break
 			}
-			return nil, fmt.Errorf("escape base %d: could not parse digit: %s", base, err)
+			return nil, fmt.Errorf("escape base %d: %w %q: %w", base, errParseDigit, ch, err)
 		}
 
 		code = (code * base) + int(digit)
@@ -152,7 +153,7 @@ func unvisEscapeDigits(p *unvisParser, base int, force bool) ([]byte, error) {
 	}
 
 	if code > unicode.MaxLatin1 {
-		return nil, fmt.Errorf("escape base %d: code %q outside latin-1 encoding", base, code)
+		return nil, fmt.Errorf("escape base %d: code %+.2x %w", base, code, errOutsideLatin1)
 	}
 
 	char := byte(code & 0xFF)
@@ -162,10 +163,10 @@ func unvisEscapeDigits(p *unvisParser, base int, force bool) ([]byte, error) {
 func unvisEscapeCtrl(p *unvisParser, mask byte) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
-		return nil, fmt.Errorf("escape ctrl: %s", err)
+		return nil, fmt.Errorf("escape ctrl: %w", err)
 	}
 	if ch > unicode.MaxLatin1 {
-		return nil, fmt.Errorf("escape ctrl: code %q outside latin-1 encoding", ch)
+		return nil, fmt.Errorf("escape ctrl: code %q %w", ch, errOutsideLatin1)
 	}
 
 	char := byte(ch) & 0x1f
@@ -180,7 +181,7 @@ func unvisEscapeCtrl(p *unvisParser, mask byte) ([]byte, error) {
 func unvisEscapeMeta(p *unvisParser) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
-		return nil, fmt.Errorf("escape meta: %s", err)
+		return nil, fmt.Errorf("escape meta: %w", err)
 	}
 
 	mask := byte(0x80)
@@ -196,10 +197,10 @@ func unvisEscapeMeta(p *unvisParser) ([]byte, error) {
 
 		ch, err := p.Peek()
 		if err != nil {
-			return nil, fmt.Errorf("escape meta1: %s", err)
+			return nil, fmt.Errorf("escape meta1: %w", err)
 		}
 		if ch > unicode.MaxLatin1 {
-			return nil, fmt.Errorf("escape meta1: code %q outside latin-1 encoding", ch)
+			return nil, fmt.Errorf("escape meta1: code %q %w", ch, errOutsideLatin1)
 		}
 
 		// Add mask to character.
@@ -207,13 +208,13 @@ func unvisEscapeMeta(p *unvisParser) ([]byte, error) {
 		return []byte{mask | byte(ch)}, nil
 	}
 
-	return nil, fmt.Errorf("escape meta: unknown escape char: %s", err)
+	return nil, fmt.Errorf("escape meta: %w %q", errUnknownEscapeChar, ch)
 }
 
 func unvisEscapeSequence(p *unvisParser) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
-		return nil, fmt.Errorf("escape sequence: %s", err)
+		return nil, fmt.Errorf("escape sequence: %w", err)
 	}
 
 	switch ch {
@@ -244,7 +245,7 @@ func unvisEscapeSequence(p *unvisParser) ([]byte, error) {
 func unvisRune(p *unvisParser) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
-		return nil, fmt.Errorf("rune: %s", err)
+		return nil, err
 	}
 
 	switch ch {
@@ -258,11 +259,8 @@ func unvisRune(p *unvisParser) ([]byte, error) {
 			p.Next()
 			return unvisEscapeDigits(p, 16, true)
 		}
-		fallthrough
-
-	default:
-		return unvisPlainRune(p)
 	}
+	return unvisPlainRune(p)
 }
 
 func unvis(p *unvisParser) (string, error) {
@@ -270,7 +268,7 @@ func unvis(p *unvisParser) (string, error) {
 	for !p.End() {
 		ch, err := unvisRune(p)
 		if err != nil {
-			return "", fmt.Errorf("input: %s", err)
+			return "", err
 		}
 		output = append(output, ch...)
 	}
@@ -281,15 +279,14 @@ func unvis(p *unvisParser) (string, error) {
 // VisHTTPStyle flag is checked) and output the un-encoded version of the
 // encoded string. An error is returned if any escape sequences in the input
 // string were invalid.
-func Unvis(input string, flag VisFlag) (string, error) {
-	// TODO: Check all of the VisFlag bits.
-	p := newParser(input, flag)
+func Unvis(input string, flags VisFlag) (string, error) {
+	if unknown := flags &^ visMask; unknown != 0 {
+		return "", unknownVisFlagsError{flags: flags}
+	}
+	p := newParser(input, flags)
 	output, err := unvis(p)
 	if err != nil {
-		return "", fmt.Errorf("unvis: %s", err)
-	}
-	if !p.End() {
-		return "", fmt.Errorf("unvis: trailing characters at end of input")
+		return "", fmt.Errorf("unvis '%s': %w", input, err)
 	}
 	return output, nil
 }

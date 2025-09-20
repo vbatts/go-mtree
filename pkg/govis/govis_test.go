@@ -215,3 +215,21 @@ func TestVisFlagsString(t *testing.T) {
 		})
 	}
 }
+
+func TestUnknownVisFlagsError(t *testing.T) {
+	t.Run("Vis", func(t *testing.T) {
+		enc, err := Vis("dummy text", visMask+1)
+		require.Error(t, err, "Vis with invalid flags should fail")
+		assert.ErrorIs(t, err, errUnknownVisFlagsError, "Vis with invalid flags")
+		assert.ErrorContains(t, err, "contains unknown or unsupported flags", "Vis with invalid flags")
+		assert.Equal(t, "", enc, "error Vis should return empty string")
+	})
+
+	t.Run("Unvis", func(t *testing.T) {
+		dec, err := Unvis("dummy text", visMask+1)
+		require.Error(t, err, "Unvis with invalid flags should fail")
+		assert.ErrorIs(t, err, errUnknownVisFlagsError, "Unvis with invalid flags")
+		assert.ErrorContains(t, err, "contains unknown or unsupported flags", "Vis with invalid flags")
+		assert.Equal(t, "", dec, "error Unvis should return empty string")
+	})
+}
