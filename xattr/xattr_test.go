@@ -4,9 +4,11 @@
 package xattr
 
 import (
-	"bytes"
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestXattr(t *testing.T) {
@@ -15,30 +17,22 @@ func TestXattr(t *testing.T) {
 		testDir = "."
 	}
 	fh, err := os.CreateTemp(testDir, "xattr.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(fh.Name())
-	if err := fh.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
+	path := fh.Name()
+	defer os.Remove(path)
+
+	require.NoError(t, fh.Close())
 
 	expected := []byte("1234")
-	if err := Set(fh.Name(), "user.testing", expected); err != nil {
-		t.Fatal(fh.Name(), err)
-	}
-	l, err := List(fh.Name())
-	if err != nil {
-		t.Error(fh.Name(), err)
-	}
-	if !(len(l) > 0) {
-		t.Errorf("%q: expected a list of at least 1; got %d", fh.Name(), len(l))
-	}
-	got, err := Get(fh.Name(), "user.testing")
-	if err != nil {
-		t.Fatal(fh.Name(), err)
-	}
-	if !bytes.Equal(got, expected) {
-		t.Errorf("%q: expected %q; got %q", fh.Name(), expected, got)
-	}
+	err = Set(path, "user.testing", expected)
+	require.NoErrorf(t, err, "set user.testing xattr %s", path)
+
+	l, err := List(path)
+	require.NoErrorf(t, err, "list xattr %s", path)
+	assert.NotEmptyf(t, l, "expected at least one xattr in list for %s", path)
+
+	got, err := Get(path, "user.testing")
+	require.NoErrorf(t, err, "get user.testing xattr %s", path)
+	assert.Equalf(t, expected, got, "user.testing xattr %s", path)
 }

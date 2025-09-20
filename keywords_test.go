@@ -5,45 +5,36 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestKeyValRoundtrip(t *testing.T) {
 	kv := KeyVal("xattr.security.selinux=dW5jb25maW5lZF91Om9iamVjdF9yOnVzZXJfaG9tZV90OnMwAA==")
 	expected := "xattr.security.selinux"
 	got := string(kv.Keyword())
-	if got != expected {
-		t.Errorf("expected %q; got %q", expected, got)
-	}
+	assert.Equalf(t, expected, got, "%q keyword", kv)
 
 	expected = "xattr"
 	got = string(kv.Keyword().Prefix())
-	if got != expected {
-		t.Errorf("expected %q; got %q", expected, got)
-	}
+	assert.Equalf(t, expected, got, "%q keyword prefix", kv)
 
 	expected = "security.selinux"
 	got = kv.Keyword().Suffix()
-	if got != expected {
-		t.Errorf("expected %q; got %q", expected, got)
-	}
+	assert.Equalf(t, expected, got, "%q keyword suffix", kv)
 
 	expected = "dW5jb25maW5lZF91Om9iamVjdF9yOnVzZXJfaG9tZV90OnMwAA=="
 	got = kv.Value()
-	if got != expected {
-		t.Errorf("expected %q; got %q", expected, got)
-	}
+	assert.Equalf(t, expected, got, "%q value", kv)
 
 	expected = "xattr.security.selinux=farts"
 	got = string(kv.NewValue("farts"))
-	if got != expected {
-		t.Errorf("expected %q; got %q", expected, got)
-	}
+	assert.Equal(t, expected, got, "NewValue", kv)
 
-	kv1 := KeyVal(got)
+	kv1 := KeyVal(expected)
 	kv2 := kv.NewValue("farts")
-	if !kv2.Equal(kv1) {
-		t.Errorf("expected equality of %q and %q", kv1, kv2)
-	}
+	assert.Equal(t, kv1, kv2, "NewValue should be equivalent to explicit value")
 
 }
 
@@ -93,20 +84,17 @@ func TestKeywordsTimeNano(t *testing.T) {
 		{144123582122, 1},
 		{857125628319, 0},
 	} {
-		mtime := time.Unix(test.sec, test.nsec)
-		expected := KeyVal(fmt.Sprintf("time=%d.%9.9d", test.sec, test.nsec))
-		got, err := timeKeywordFunc("", fakeFileInfo{
-			mtime: mtime,
-		}, nil)
-		if err != nil {
-			t.Errorf("unexpected error while parsing '%q': %q", mtime, err)
-		}
-		if len(got) != 1 {
-			t.Errorf("expected 1 KeyVal, but got %d", len(got))
-		}
-		if expected != got[0] {
-			t.Errorf("keyword didn't match, expected '%s' got '%s'", expected, got[0])
-		}
+		t.Run(fmt.Sprintf("%d.%9.9d", test.sec, test.nsec), func(t *testing.T) {
+			mtime := time.Unix(test.sec, test.nsec)
+			expected := KeyVal(fmt.Sprintf("time=%d.%9.9d", test.sec, test.nsec))
+			got, err := timeKeywordFunc("", fakeFileInfo{
+				mtime: mtime,
+			}, nil)
+			require.NoErrorf(t, err, "time keyword fn")
+			if assert.Len(t, got, 1, "time keyword fn") {
+				assert.Equal(t, []KeyVal{expected}, got, "should get matching keyword")
+			}
+		})
 	}
 }
 
@@ -123,25 +111,22 @@ func TestKeywordsTimeTar(t *testing.T) {
 		{144123582122, 1},
 		{857125628319, 0},
 	} {
-		mtime := time.Unix(test.sec, test.nsec)
-		expected := KeyVal(fmt.Sprintf("tar_time=%d.%9.9d", test.sec, 0))
-		got, err := tartimeKeywordFunc("", fakeFileInfo{
-			mtime: mtime,
-		}, nil)
-		if err != nil {
-			t.Errorf("unexpected error while parsing '%q': %q", mtime, err)
-		}
-		if len(got) != 1 {
-			t.Errorf("expected 1 KeyVal, but got %d", len(got))
-		}
-		if expected != got[0] {
-			t.Errorf("keyword didn't match, expected '%s' got '%s'", expected, got[0])
-		}
+		t.Run(fmt.Sprintf("%d.%9.9d", test.sec, test.nsec), func(t *testing.T) {
+			mtime := time.Unix(test.sec, test.nsec)
+			expected := KeyVal(fmt.Sprintf("tar_time=%d.%9.9d", test.sec, 0))
+			got, err := tartimeKeywordFunc("", fakeFileInfo{
+				mtime: mtime,
+			}, nil)
+			require.NoErrorf(t, err, "tar_time keyword fn")
+			if assert.Len(t, got, 1, "tar_time keyword fn") {
+				assert.Equal(t, []KeyVal{expected}, got, "should get matching keyword")
+			}
+		})
 	}
 }
 
 func TestKeywordSynonym(t *testing.T) {
-	checklist := []struct {
+	for _, test := range []struct {
 		give   string
 		expect Keyword
 	}{
@@ -161,12 +146,10 @@ func TestKeywordSynonym(t *testing.T) {
 		{give: "sha512digest", expect: "sha512digest"},
 		{give: "xattr", expect: "xattr"},
 		{give: "xattrs", expect: "xattr"},
-	}
-
-	for i, check := range checklist {
-		got := KeywordSynonym(check.give)
-		if got != check.expect {
-			t.Errorf("%d: expected %q; got %q", i, check.expect, got)
-		}
+	} {
+		t.Run(test.give, func(t *testing.T) {
+			got := KeywordSynonym(test.give)
+			assert.Equal(t, test.expect, got)
+		})
 	}
 }
