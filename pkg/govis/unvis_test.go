@@ -19,6 +19,7 @@
 package govis
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -26,17 +27,33 @@ import (
 )
 
 func TestUnvisError(t *testing.T) {
-	for _, test := range []string{
+	for _, test := range []struct {
+		input string
+		err   error
+	}{
 		// Octal escape codes allow you to specify invalid ASCII values.
-		"\\777",
-		"\\420\\322\\455",
-		"\\652\\233",
+		{"\\777", errOutsideLatin1},
+		{"\\420\\322\\455", errOutsideLatin1},
+		{"\\652\\233", errOutsideLatin1},
+		// Escapes that end abruptly.
+		{"\\", errEndOfString},
+		{"\\J", errUnknownEscapeChar},
+		{"a bad slash: \\", errEndOfString},
+		{"testing -- \\x", errEndOfString},
+		{"\\xG0 test", strconv.ErrSyntax},
+		{"  abc \\Mx", errUnknownEscapeChar},
+		{"\\Mx", errUnknownEscapeChar},
+		{"\\M-", errEndOfString},
+		{"\\M-\u5000", errOutsideLatin1},
+		{"\\M^", errEndOfString},
+		{"\\^", errEndOfString},
+		{"\\^\u5000", errOutsideLatin1},
+		{"\\M", errEndOfString},
 	} {
-		t.Run(test, func(t *testing.T) {
-			_, err := Unvis(test, DefaultVisFlags)
-			require.Errorf(t, err, "invalid octal escape should give an error")
-			assert.ErrorContains(t, err, "escape base 8")
-			assert.ErrorContains(t, err, "outside latin-1 encoding")
+		t.Run(test.input, func(t *testing.T) {
+			_, err := Unvis(test.input, DefaultVisFlags)
+			require.Errorf(t, err, "invalid escape string should give an error")
+			assert.ErrorIs(t, err, test.err, "unexpected error from invalid escape string")
 		})
 	}
 }
