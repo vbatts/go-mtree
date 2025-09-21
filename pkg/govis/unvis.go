@@ -45,8 +45,8 @@ func (p *unvisParser) Input(input string) {
 	p.idx = 0
 }
 
-// Next moves the index to the next character.
-func (p *unvisParser) Next() {
+// Step moves the index to the next character.
+func (p *unvisParser) Step() {
 	p.idx++
 }
 
@@ -56,6 +56,15 @@ func (p *unvisParser) Peek() (rune, error) {
 		return unicode.ReplacementChar, errEndOfString
 	}
 	return p.tokens[p.idx], nil
+}
+
+// Next moves the index to the next character and returns said character.
+func (p *unvisParser) Next() (rune, error) {
+	ch, err := p.Peek()
+	if err == nil {
+		p.Step()
+	}
+	return ch, err
 }
 
 // End returns whether all of the tokens have been consumed.
@@ -87,16 +96,15 @@ func newParser(flags VisFlag) *unvisParser {
 // <escape-octal>    ::= [0-7] ([0-7] ([0-7])?)?
 
 func (p *unvisParser) plainRune() ([]byte, error) {
-	ch, err := p.Peek()
+	ch, err := p.Next()
 	if err != nil {
 		return nil, fmt.Errorf("plain rune: %w", err)
 	}
-	p.Next()
 	return []byte(string(ch)), nil
 }
 
 func (p *unvisParser) escapeCStyle() ([]byte, error) {
-	ch, err := p.Peek()
+	ch, err := p.Next()
 	if err != nil {
 		return nil, fmt.Errorf("escape cstyle: %w", err)
 	}
@@ -130,7 +138,6 @@ func (p *unvisParser) escapeCStyle() ([]byte, error) {
 		return nil, fmt.Errorf("escape cstyle: %w %q", errUnknownEscapeChar, ch)
 	}
 
-	p.Next()
 	return []byte(output), nil
 }
 
@@ -155,7 +162,7 @@ func (p *unvisParser) escapeDigits(base int, force bool) ([]byte, error) {
 		}
 
 		code = (code * base) + int(digit)
-		p.Next()
+		p.Step() // only consume token if we use it (length is variable)
 	}
 
 	if code > unicode.MaxLatin1 {
@@ -167,7 +174,7 @@ func (p *unvisParser) escapeDigits(base int, force bool) ([]byte, error) {
 }
 
 func (p *unvisParser) escapeCtrl(mask byte) ([]byte, error) {
-	ch, err := p.Peek()
+	ch, err := p.Next()
 	if err != nil {
 		return nil, fmt.Errorf("escape ctrl: %w", err)
 	}
@@ -179,13 +186,11 @@ func (p *unvisParser) escapeCtrl(mask byte) ([]byte, error) {
 	if ch == '?' {
 		char = 0x7f
 	}
-
-	p.Next()
 	return []byte{mask | char}, nil
 }
 
 func (p *unvisParser) escapeMeta() ([]byte, error) {
-	ch, err := p.Peek()
+	ch, err := p.Next()
 	if err != nil {
 		return nil, fmt.Errorf("escape meta: %w", err)
 	}
@@ -195,22 +200,17 @@ func (p *unvisParser) escapeMeta() ([]byte, error) {
 	switch ch {
 	case '^':
 		// The same as "\^..." except we apply a mask.
-		p.Next()
 		return p.escapeCtrl(mask)
 
 	case '-':
-		p.Next()
-
-		ch, err := p.Peek()
+		ch, err := p.Next()
 		if err != nil {
 			return nil, fmt.Errorf("escape meta1: %w", err)
 		}
 		if ch > unicode.MaxLatin1 {
 			return nil, fmt.Errorf("escape meta1: code %q %w", ch, errOutsideLatin1)
 		}
-
 		// Add mask to character.
-		p.Next()
 		return []byte{mask | byte(ch)}, nil
 	}
 
@@ -225,22 +225,22 @@ func (p *unvisParser) escapeSequence() ([]byte, error) {
 
 	switch ch {
 	case '\\':
-		p.Next()
+		p.Step()
 		return []byte("\\"), nil
 
 	case '0', '1', '2', '3', '4', '5', '6', '7':
 		return p.escapeDigits(8, false)
 
 	case 'x':
-		p.Next()
+		p.Step()
 		return p.escapeDigits(16, true)
 
 	case '^':
-		p.Next()
+		p.Step()
 		return p.escapeCtrl(0x00)
 
 	case 'M':
-		p.Next()
+		p.Step()
 		return p.escapeMeta()
 
 	default:
@@ -256,13 +256,13 @@ func (p *unvisParser) element() ([]byte, error) {
 
 	switch ch {
 	case '\\':
-		p.Next()
+		p.Step()
 		return p.escapeSequence()
 
 	case '%':
 		// % HEX HEX only applies to HTTPStyle encodings.
 		if p.flags&VisHTTPStyle == VisHTTPStyle {
-			p.Next()
+			p.Step()
 			return p.escapeDigits(16, true)
 		}
 	}
