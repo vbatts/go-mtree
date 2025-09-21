@@ -20,6 +20,7 @@ package govis
 
 import (
 	"fmt"
+	"strings"
 	"unicode"
 )
 
@@ -59,14 +60,15 @@ func isgraph(ch rune) bool {
 // the plus side this is actually a benefit on the encoding side (it will
 // always work with the simple unvis(3) implementation). It also means that we
 // don't have to worry about different multi-byte encodings.
-func vis(b byte, flag VisFlag) string {
+func vis(output *strings.Builder, b byte, flag VisFlag) {
 	// Treat the single-byte character as a rune.
 	ch := rune(b)
 
 	// XXX: This is quite a horrible thing to support.
 	if flag&VisHTTPStyle == VisHTTPStyle {
 		if !ishttp(ch) {
-			return "%" + fmt.Sprintf("%.2X", ch)
+			_, _ = fmt.Fprintf(output, "%%%.2X", ch)
+			return
 		}
 	}
 
@@ -86,35 +88,44 @@ func vis(b byte, flag VisFlag) string {
 		(flag&VisNewline != VisNewline && ch == '\n') ||
 		(flag&VisSafe != 0 && isunsafe(ch)) {
 
-		encoded := string(ch)
 		if ch == '\\' && flag&VisNoSlash == 0 {
-			encoded += "\\"
+			_ = output.WriteByte('\\')
 		}
-		return encoded
+		_ = output.WriteByte(b)
+		return
 	}
 
 	// Try to use C-style escapes first.
 	if flag&VisCStyle == VisCStyle {
 		switch ch {
 		case ' ':
-			return "\\s"
+			_, _ = output.WriteString("\\s")
+			return
 		case '\n':
-			return "\\n"
+			_, _ = output.WriteString("\\n")
+			return
 		case '\r':
-			return "\\r"
+			_, _ = output.WriteString("\\r")
+			return
 		case '\b':
-			return "\\b"
+			_, _ = output.WriteString("\\b")
+			return
 		case '\a':
-			return "\\a"
+			_, _ = output.WriteString("\\a")
+			return
 		case '\v':
-			return "\\v"
+			_, _ = output.WriteString("\\v")
+			return
 		case '\t':
-			return "\\t"
+			_, _ = output.WriteString("\\t")
+			return
 		case '\f':
-			return "\\f"
+			_, _ = output.WriteString("\\f")
+			return
 		case '\x00':
 			// Output octal just to be safe.
-			return "\\000"
+			_, _ = output.WriteString("\\000")
+			return
 		}
 	}
 
@@ -123,7 +134,8 @@ func vis(b byte, flag VisFlag) string {
 	// encoded as octal.
 	if flag&VisOctal == VisOctal || isgraph(ch) || ch&0x7f == ' ' {
 		// Always output three-character octal just to be safe.
-		return fmt.Sprintf("\\%.3o", ch)
+		_, _ = fmt.Fprintf(output, "\\%.3o", ch)
+		return
 	}
 
 	// Now we have to output meta or ctrl escapes. As far as I can tell, this
@@ -131,30 +143,28 @@ func vis(b byte, flag VisFlag) string {
 	// copied from the original vis(3) implementation. Hopefully nobody
 	// actually relies on this (octal and hex are better).
 
-	encoded := ""
 	if flag&VisNoSlash == 0 {
-		encoded += "\\"
+		_ = output.WriteByte('\\')
 	}
 
 	// Meta characters have 0x80 set, but are otherwise identical to control
 	// characters.
 	if b&0x80 != 0 {
 		b &= 0x7f
-		encoded += "M"
+		_ = output.WriteByte('M')
 	}
 
 	if unicode.IsControl(rune(b)) {
-		encoded += "^"
+		_ = output.WriteByte('^')
 		if b == 0x7f {
-			encoded += "?"
+			_ = output.WriteByte('?')
 		} else {
-			encoded += fmt.Sprintf("%c", b+'@')
+			_ = output.WriteByte(b + '@')
 		}
 	} else {
-		encoded += fmt.Sprintf("-%c", b)
+		_ = output.WriteByte('-')
+		_ = output.WriteByte(b)
 	}
-
-	return encoded
 }
 
 // Vis encodes the provided string to a BSD-compatible encoding using BSD's
@@ -164,10 +174,10 @@ func Vis(src string, flags VisFlag) (string, error) {
 	if unknown := flags &^ visMask; unknown != 0 {
 		return "", unknownVisFlagsError{flags: flags}
 	}
-
-	output := ""
+	var output strings.Builder
+	output.Grow(len(src)) // vis() will always take up at least len(src) bytes
 	for _, ch := range []byte(src) {
-		output += vis(ch, flags)
+		vis(&output, ch, flags)
 	}
-	return output, nil
+	return output.String(), nil
 }
