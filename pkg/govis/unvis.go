@@ -36,7 +36,13 @@ var (
 type unvisParser struct {
 	tokens []rune
 	idx    int
-	flag   VisFlag
+	flags  VisFlag
+}
+
+// Input resets the parser with a new input string.
+func (p *unvisParser) Input(input string) {
+	p.tokens = []rune(input)
+	p.idx = 0
 }
 
 // Next moves the index to the next character.
@@ -57,11 +63,11 @@ func (p *unvisParser) End() bool {
 	return p.idx >= len(p.tokens)
 }
 
-func newParser(input string, flag VisFlag) *unvisParser {
+func newParser(flags VisFlag) *unvisParser {
 	return &unvisParser{
-		tokens: []rune(input),
+		tokens: nil,
 		idx:    0,
-		flag:   flag,
+		flags:  flags,
 	}
 }
 
@@ -69,8 +75,8 @@ func newParser(input string, flag VisFlag) *unvisParser {
 // codes, this is IMO much easier to read than the ugly 80s coroutine code used
 // by the original unvis(3) parser. Here's the EBNF for an unvis sequence:
 //
-// <input>           ::= (<rune>)*
-// <rune>            ::= ("\" <escape-sequence>) | ("%" <escape-hex>) | <plain-rune>
+// <input>           ::= (<element>)*
+// <element>         ::= ("\" <escape-sequence>) | ("%" <escape-hex>) | <plain-rune>
 // <plain-rune>      ::= any rune
 // <escape-sequence> ::= ("x" <escape-hex>) | ("M" <escape-meta>) | ("^" <escape-ctrl) | <escape-cstyle> | <escape-octal>
 // <escape-meta>     ::= ("-" <escape-meta1>) | ("^" <escape-ctrl>)
@@ -80,7 +86,7 @@ func newParser(input string, flag VisFlag) *unvisParser {
 // <escape-hex>      ::= [0-9a-f] [0-9a-f]
 // <escape-octal>    ::= [0-7] ([0-7] ([0-7])?)?
 
-func unvisPlainRune(p *unvisParser) ([]byte, error) {
+func (p *unvisParser) plainRune() ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
 		return nil, fmt.Errorf("plain rune: %w", err)
@@ -89,7 +95,7 @@ func unvisPlainRune(p *unvisParser) ([]byte, error) {
 	return []byte(string(ch)), nil
 }
 
-func unvisEscapeCStyle(p *unvisParser) ([]byte, error) {
+func (p *unvisParser) escapeCStyle() ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
 		return nil, fmt.Errorf("escape cstyle: %w", err)
@@ -128,7 +134,7 @@ func unvisEscapeCStyle(p *unvisParser) ([]byte, error) {
 	return []byte(output), nil
 }
 
-func unvisEscapeDigits(p *unvisParser, base int, force bool) ([]byte, error) {
+func (p *unvisParser) escapeDigits(base int, force bool) ([]byte, error) {
 	var code int
 
 	for i := int(0xFF); i > 0; i /= base {
@@ -160,7 +166,7 @@ func unvisEscapeDigits(p *unvisParser, base int, force bool) ([]byte, error) {
 	return []byte{char}, nil
 }
 
-func unvisEscapeCtrl(p *unvisParser, mask byte) ([]byte, error) {
+func (p *unvisParser) escapeCtrl(mask byte) ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
 		return nil, fmt.Errorf("escape ctrl: %w", err)
@@ -178,7 +184,7 @@ func unvisEscapeCtrl(p *unvisParser, mask byte) ([]byte, error) {
 	return []byte{mask | char}, nil
 }
 
-func unvisEscapeMeta(p *unvisParser) ([]byte, error) {
+func (p *unvisParser) escapeMeta() ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
 		return nil, fmt.Errorf("escape meta: %w", err)
@@ -190,7 +196,7 @@ func unvisEscapeMeta(p *unvisParser) ([]byte, error) {
 	case '^':
 		// The same as "\^..." except we apply a mask.
 		p.Next()
-		return unvisEscapeCtrl(p, mask)
+		return p.escapeCtrl(mask)
 
 	case '-':
 		p.Next()
@@ -211,7 +217,7 @@ func unvisEscapeMeta(p *unvisParser) ([]byte, error) {
 	return nil, fmt.Errorf("escape meta: %w %q", errUnknownEscapeChar, ch)
 }
 
-func unvisEscapeSequence(p *unvisParser) ([]byte, error) {
+func (p *unvisParser) escapeSequence() ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
 		return nil, fmt.Errorf("escape sequence: %w", err)
@@ -223,26 +229,26 @@ func unvisEscapeSequence(p *unvisParser) ([]byte, error) {
 		return []byte("\\"), nil
 
 	case '0', '1', '2', '3', '4', '5', '6', '7':
-		return unvisEscapeDigits(p, 8, false)
+		return p.escapeDigits(8, false)
 
 	case 'x':
 		p.Next()
-		return unvisEscapeDigits(p, 16, true)
+		return p.escapeDigits(16, true)
 
 	case '^':
 		p.Next()
-		return unvisEscapeCtrl(p, 0x00)
+		return p.escapeCtrl(0x00)
 
 	case 'M':
 		p.Next()
-		return unvisEscapeMeta(p)
+		return p.escapeMeta()
 
 	default:
-		return unvisEscapeCStyle(p)
+		return p.escapeCStyle()
 	}
 }
 
-func unvisRune(p *unvisParser) ([]byte, error) {
+func (p *unvisParser) element() ([]byte, error) {
 	ch, err := p.Peek()
 	if err != nil {
 		return nil, err
@@ -251,22 +257,23 @@ func unvisRune(p *unvisParser) ([]byte, error) {
 	switch ch {
 	case '\\':
 		p.Next()
-		return unvisEscapeSequence(p)
+		return p.escapeSequence()
 
 	case '%':
 		// % HEX HEX only applies to HTTPStyle encodings.
-		if p.flag&VisHTTPStyle == VisHTTPStyle {
+		if p.flags&VisHTTPStyle == VisHTTPStyle {
 			p.Next()
-			return unvisEscapeDigits(p, 16, true)
+			return p.escapeDigits(16, true)
 		}
 	}
-	return unvisPlainRune(p)
+	return p.plainRune()
 }
 
-func unvis(p *unvisParser) (string, error) {
+func (p *unvisParser) unvis(input string) (string, error) {
+	p.Input(input)
 	var output []byte
 	for !p.End() {
-		ch, err := unvisRune(p)
+		ch, err := p.element()
 		if err != nil {
 			return "", err
 		}
@@ -283,8 +290,8 @@ func Unvis(input string, flags VisFlag) (string, error) {
 	if unknown := flags &^ visMask; unknown != 0 {
 		return "", unknownVisFlagsError{flags: flags}
 	}
-	p := newParser(input, flags)
-	output, err := unvis(p)
+	p := newParser(flags)
+	output, err := p.unvis(input)
 	if err != nil {
 		return "", fmt.Errorf("unvis '%s': %w", input, err)
 	}
