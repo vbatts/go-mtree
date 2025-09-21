@@ -19,6 +19,7 @@
 package govis
 
 import (
+	"crypto/rand"
 	"strconv"
 	"testing"
 
@@ -171,4 +172,57 @@ func TestUnvisUnicode(t *testing.T) {
 			assert.Equalf(t, test, enc, "decoding of %q should be the same as original", test)
 		})
 	}
+}
+
+func BenchmarkUnvis(b *testing.B) {
+	doBench := func(b *testing.B, text string) {
+		encoded, err := Vis(text, DefaultVisFlags)
+		require.NoErrorf(b, err, "vis(%q)", text)
+
+		decoded, err := Unvis(encoded, DefaultVisFlags)
+		require.NoErrorf(b, err, "unvis(vis(%q) = %q)", text, encoded)
+		require.Equalf(b, text, decoded, "unvis(vis(%q) = %q)", text, encoded)
+
+		for b.Loop() {
+			_, _ = Unvis(encoded, DefaultVisFlags)
+		}
+	}
+
+	b.Run("NoChange", func(b *testing.B) {
+		text := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+		doBench(b, text)
+	})
+
+	b.Run("Binary", func(b *testing.B) {
+		var data [32]byte
+		n, err := rand.Read(data[:])
+		require.NoError(b, err, "rand.Read")
+		require.Equal(b, len(data), n, "rand.Read len return")
+
+		text := string(data[:])
+		doBench(b, text)
+	})
+
+	// The rest of these test strings come from a set of test strings collated
+	// in <https://www.w3.org/2001/06/utf-8-test/quickbrown.html>.
+
+	b.Run("ASCII", func(b *testing.B) {
+		text := "The quick brown fox jumps over the lazy dog."
+		doBench(b, text)
+	})
+
+	b.Run("German", func(b *testing.B) {
+		text := "Falsches Üben von Xylophonmusik quält jeden größeren Zwerg"
+		doBench(b, text)
+	})
+
+	b.Run("Russian", func(b *testing.B) {
+		text := "В чащах юга жил бы цитрус? Да, но фальшивый экземпляр!"
+		doBench(b, text)
+	})
+
+	b.Run("Japanese", func(b *testing.B) {
+		text := "いろはにほへとちりぬるをイロハニホヘトチリヌルヲ"
+		doBench(b, text)
+	})
 }
