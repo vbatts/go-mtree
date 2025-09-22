@@ -65,32 +65,28 @@ func vis(output *strings.Builder, b byte, flag VisFlag) {
 	ch := rune(b)
 
 	// XXX: This is quite a horrible thing to support.
-	if flag&VisHTTPStyle == VisHTTPStyle {
-		if !ishttp(ch) {
-			_, _ = fmt.Fprintf(output, "%%%.2X", ch)
-			return
-		}
+	if flag&VisHTTPStyle == VisHTTPStyle && !ishttp(ch) {
+		_, _ = fmt.Fprintf(output, "%%%.2X", ch)
+		return
 	}
 
 	// Figure out if the character doesn't need to be encoded. Effectively, we
 	// encode most "normal" (graphical) characters as themselves unless we have
-	// been specifically asked not to. Note though that we *ALWAYS* encode
-	// everything outside ASCII.
-	// TODO: Switch this to much more logical code.
-
-	if ch > unicode.MaxASCII {
-		/* ... */
-	} else if flag&VisGlob == VisGlob && isglob(ch) {
-		/* ... */
-	} else if isgraph(ch) ||
-		(flag&VisSpace != VisSpace && ch == ' ') ||
-		(flag&VisTab != VisTab && ch == '\t') ||
-		(flag&VisNewline != VisNewline && ch == '\n') ||
-		(flag&VisSafe != 0 && isunsafe(ch)) {
-
-		if ch == '\\' && flag&VisNoSlash == 0 {
-			_ = output.WriteByte('\\')
-		}
+	// been specifically asked not to.
+	switch {
+	case ch > unicode.MaxASCII:
+		// We must *always* encode stuff characters not in ASCII.
+	case flag&VisGlob == VisGlob && isglob(ch):
+		// Glob characters are graphical but can be forced to be encoded.
+	case flag&VisNoSlash == 0 && ch == '\\':
+		// Prefix \ if applicable.
+		_ = output.WriteByte('\\')
+		fallthrough
+	case isgraph(ch),
+		flag&VisSpace != VisSpace && ch == ' ',
+		flag&VisTab != VisTab && ch == '\t',
+		flag&VisNewline != VisNewline && ch == '\n',
+		flag&VisSafe != 0 && isunsafe(ch):
 		_ = output.WriteByte(b)
 		return
 	}
