@@ -17,6 +17,11 @@
 
 package govis
 
+import (
+	"strconv"
+	"strings"
+)
+
 // VisFlag manipulates how the characters are encoded/decoded
 type VisFlag uint
 
@@ -37,3 +42,40 @@ const (
 
 	VisWhite VisFlag = (VisSpace | VisTab | VisNewline)
 )
+
+// String pretty-prints VisFlag.
+func (vflags VisFlag) String() string {
+	flagNames := []struct {
+		name string
+		bits VisFlag
+	}{
+		{"VisOctal", VisOctal},
+		{"VisCStyle", VisCStyle},
+		{"VisSpace", VisSpace},
+		{"VisTab", VisTab},
+		{"VisNewline", VisNewline},
+		{"VisSafe", VisSafe},
+		{"VisNoSlash", VisNoSlash},
+		{"VisHTTPStyle", VisHTTPStyle},
+		{"VisGlob", VisGlob},
+	}
+	var (
+		flagSet  = make([]string, 0, len(flagNames))
+		seenBits VisFlag
+	)
+	for _, flag := range flagNames {
+		if vflags&flag.bits == flag.bits {
+			seenBits |= flag.bits
+			flagSet = append(flagSet, flag.name)
+		}
+	}
+	// If there were any remaining flags specified we don't know the name of,
+	// just add them in an 0x... format.
+	if remaining := vflags &^ seenBits; remaining != 0 {
+		flagSet = append(flagSet, "0x"+strconv.FormatUint(uint64(remaining), 16))
+	}
+	if len(flagSet) == 0 {
+		return "0"
+	}
+	return strings.Join(flagSet, "|")
+}

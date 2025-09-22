@@ -1,88 +1,68 @@
 package mtree
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-var (
-	testFiles = []struct {
-		Name   string
-		Counts map[EntryType]int
-		Len    int64
+func TestParser(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		counts map[EntryType]int
+		size   int64
 	}{
 		{
-			Name: "testdata/source.mtree",
-			Counts: map[EntryType]int{
-				FullType:     0,
+			name: "testdata/source.mtree",
+			counts: map[EntryType]int{
+				//FullType:     0,
 				RelativeType: 45,
 				CommentType:  37,
 				SpecialType:  7,
 				DotDotType:   17,
 				BlankType:    34,
 			},
-			Len: int64(7887),
+			size: 7887,
 		},
 		{
-			Name: "testdata/source.casync-mtree",
-			Counts: map[EntryType]int{
+			name: "testdata/source.casync-mtree",
+			counts: map[EntryType]int{
 				FullType:     744,
 				RelativeType: 56,
-				CommentType:  37,
-				SpecialType:  7,
-				DotDotType:   17,
-				BlankType:    34,
 			},
-			Len: int64(168439),
+			size: 168439,
 		},
-	}
-)
-
-func TestParser(t *testing.T) {
-	for i, tf := range testFiles {
-		_ = i
-		func() {
-			fh, err := os.Open(tf.Name)
-			if err != nil {
-				t.Error(err)
-				return
-			}
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fh, err := os.Open(test.name)
+			require.NoError(t, err)
 			defer fh.Close()
 
-			dh, err := ParseSpec(fh)
-			if err != nil {
-				t.Error(err)
-			}
+			var readSpecBuf bytes.Buffer
+			rdr := io.TeeReader(fh, &readSpecBuf)
 
-			if i == 1 {
-				spew.Dump(dh)
-				//buf, err := xml.MarshalIndent(dh, "", "  ")
-				//if err == nil {
-				//t.Error(string(buf))
-				//}
-			}
+			dh, err := ParseSpec(rdr)
+			require.NoErrorf(t, err, "parse spec %s", test.name)
+
+			defer func() {
+				if t.Failed() {
+					t.Log(spew.Sdump(dh))
+				}
+			}()
 
 			gotNums := countTypes(dh)
-			for typ, num := range tf.Counts {
-				if gNum, ok := gotNums[typ]; ok {
-					if num != gNum {
-						t.Errorf("for type %s: expected %d, got %d", typ, num, gNum)
-					}
-				}
-			}
+			assert.Equal(t, test.counts, gotNums, "count of entry types mismatch")
 
-			i, err := dh.WriteTo(io.Discard)
-			if err != nil {
-				t.Error(err)
-			}
-			if i != tf.Len {
-				t.Errorf("expected to write %d, but wrote %d", tf.Len, i)
-			}
-
-		}()
+			n, err := dh.WriteTo(io.Discard)
+			require.NoError(t, err, "write directory hierarchy representation")
+			assert.Equal(t, test.size, n, "output mtree spec should match input size")
+			// TODO: Verify that the output is equal to the input.
+		})
 	}
 }
 
