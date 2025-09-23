@@ -21,12 +21,21 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
 
+    - name: Go Modules
+      run: |
+        go mod tidy
+        git diff --exit-code
+
+        go mod vendor
+        git add -N vendor/
+        git diff --exit-code
+
     - name: Build
       run: make build
 
     - name: Validation
       run: make validation
-      
+
     - name: Build.Arches
       run: make build.arches
 
