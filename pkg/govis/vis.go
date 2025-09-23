@@ -24,24 +24,25 @@ import (
 	"unicode"
 )
 
-func isunsafe(ch rune) bool {
+var maxAscii byte = unicode.MaxASCII // 0x7f
+
+func isunsafe(ch byte) bool {
 	return ch == '\b' || ch == '\007' || ch == '\r'
 }
 
-func isglob(ch rune) bool {
+func isglob(ch byte) bool {
 	return ch == '*' || ch == '?' || ch == '[' || ch == '#'
 }
 
 // ishttp is defined by RFC 1808.
-func ishttp(ch rune) bool {
+func ishttp(ch byte) bool {
 	// RFC1808 does not really consider characters outside of ASCII, so just to
 	// be safe always treat characters outside the ASCII character set as "not
 	// HTTP".
-	if ch > unicode.MaxASCII {
+	if ch > maxAscii {
 		return false
 	}
-
-	return unicode.IsDigit(ch) || unicode.IsLetter(ch) ||
+	return unicode.IsDigit(rune(ch)) || unicode.IsLetter(rune(ch)) ||
 		// Safe characters.
 		ch == '$' || ch == '-' || ch == '_' || ch == '.' || ch == '+' ||
 		// Extra characters.
@@ -49,8 +50,13 @@ func ishttp(ch rune) bool {
 		ch == ')' || ch == ','
 }
 
-func isgraph(ch rune) bool {
-	return unicode.IsGraphic(ch) && !unicode.IsSpace(ch) && ch <= unicode.MaxASCII
+func isgraph(ch byte) bool {
+	return ch <= maxAscii &&
+		unicode.IsGraphic(rune(ch)) && !unicode.IsSpace(rune(ch))
+}
+
+func isctrl(ch byte) bool {
+	return unicode.IsControl(rune(ch))
 }
 
 // vis converts a single *byte* into its encoding. While Go supports the
@@ -60,10 +66,7 @@ func isgraph(ch rune) bool {
 // the plus side this is actually a benefit on the encoding side (it will
 // always work with the simple unvis(3) implementation). It also means that we
 // don't have to worry about different multi-byte encodings.
-func vis(output *strings.Builder, b byte, flag VisFlag) {
-	// Treat the single-byte character as a rune.
-	ch := rune(b)
-
+func vis(output *strings.Builder, ch byte, flag VisFlag) {
 	// XXX: This is quite a horrible thing to support.
 	if flag&VisHTTPStyle == VisHTTPStyle && !ishttp(ch) {
 		_, _ = fmt.Fprintf(output, "%%%.2X", ch)
@@ -74,7 +77,7 @@ func vis(output *strings.Builder, b byte, flag VisFlag) {
 	// encode most "normal" (graphical) characters as themselves unless we have
 	// been specifically asked not to.
 	switch {
-	case ch > unicode.MaxASCII:
+	case ch > maxAscii:
 		// We must *always* encode stuff characters not in ASCII.
 	case flag&VisGlob == VisGlob && isglob(ch):
 		// Glob characters are graphical but can be forced to be encoded.
@@ -87,7 +90,7 @@ func vis(output *strings.Builder, b byte, flag VisFlag) {
 		flag&VisTab != VisTab && ch == '\t',
 		flag&VisNewline != VisNewline && ch == '\n',
 		flag&VisSafe != 0 && isunsafe(ch):
-		_ = output.WriteByte(b)
+		_ = output.WriteByte(ch)
 		return
 	}
 
@@ -127,7 +130,7 @@ func vis(output *strings.Builder, b byte, flag VisFlag) {
 
 	// For graphical characters we generate octal output (and also if it's
 	// being forced by the caller's flags). Also spaces should always be
-	// encoded as octal.
+	// encoded as octal (note that ' '|0x80 == '\xa0' is a non-breaking space).
 	if flag&VisOctal == VisOctal || isgraph(ch) || ch&0x7f == ' ' {
 		// Always output three-character octal just to be safe.
 		_, _ = fmt.Fprintf(output, "\\%.3o", ch)
@@ -145,21 +148,20 @@ func vis(output *strings.Builder, b byte, flag VisFlag) {
 
 	// Meta characters have 0x80 set, but are otherwise identical to control
 	// characters.
-	if b&0x80 != 0 {
-		b &= 0x7f
+	if ch&0x80 != 0 {
+		ch &= 0x7f
 		_ = output.WriteByte('M')
 	}
-
-	if unicode.IsControl(rune(b)) {
+	if isctrl(ch) {
 		_ = output.WriteByte('^')
-		if b == 0x7f {
+		if ch == 0x7f {
 			_ = output.WriteByte('?')
 		} else {
-			_ = output.WriteByte(b + '@')
+			_ = output.WriteByte(ch + '@')
 		}
 	} else {
 		_ = output.WriteByte('-')
-		_ = output.WriteByte(b)
+		_ = output.WriteByte(ch)
 	}
 }
 
