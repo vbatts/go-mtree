@@ -225,9 +225,9 @@ func (p *unvisParser) escapeSequence() error {
 	}
 
 	switch ch {
-	case '\\':
+	case '\\', '"':
 		p.Step()
-		return p.output.WriteByte('\\')
+		return p.output.WriteByte(byte(ch))
 
 	case '0', '1', '2', '3', '4', '5', '6', '7':
 		return p.escapeDigits(8, false)

@@ -81,7 +81,8 @@ func vis(output *strings.Builder, ch byte, flag VisFlag) {
 		// We must *always* encode stuff characters not in ASCII.
 	case flag&VisGlob == VisGlob && isglob(ch):
 		// Glob characters are graphical but can be forced to be encoded.
-	case flag&VisNoSlash == 0 && ch == '\\':
+	case flag&VisNoSlash == 0 && ch == '\\',
+		flag&VisDoubleQuote == VisDoubleQuote && ch == '"':
 		// Prefix \ if applicable.
 		_ = output.WriteByte('\\')
 		fallthrough
