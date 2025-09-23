@@ -104,6 +104,11 @@ func TestVisFlags(t *testing.T) {
 		{"62_\u00c6\u00c62\u00ae\u00b7m\u00db\u00c3r^\u00bfp\u00c6u'q\u00fbc2\u00f0u\u00b8\u00dd\u00e8v\u00ff\u00b0\u00dc\u00c2\u00f53\u00db-k\u00f2sd4\\p\u00da\u00a6\u00d3\u00eea<\u00e6s{\u00a0p\u00f0\u00ffj\u00e0\u00e8\u00b8\u00b8\u00bc\u00fcb", `62_\303\206\303\2062\302\256\302\267m\303\233\303\203r^\302\277p\303\206u'q\303\273c2\303\260u\302\270\303\235\303\250v\303\277\302\260\303\234\303\202\303\2653\303\233-k\303\262sd4\\p\303\232\302\246\303\223\303\256a<\303\246s{\302\240p\303\260\303\277j\303\240\303\250\302\270\302\270\302\274\303\274b`, VisGlob | VisOctal},
 		{"'3Ze\u050e|\u02del\u069du-Rpct4+Z5b={@_{b", `'3Ze\M-T\M^N|\M-K\M^^l\M-Z\M^]u-Rpct4+Z5b={@_{b`, VisGlob},
 		{"'3Ze\u050e|\u02del\u069du-Rpct4+Z5b={@_{b", `'3Ze\324\216|\313\236l\332\235u-Rpct4+Z5b={@_{b`, VisGlob | VisOctal},
+		// VisDoubleQuote
+		{`Foo="Bar's"`, `Foo="Bar's"`, 0},
+		{`Foo="Bar's"`, `Foo=\"Bar's\"`, VisDoubleQuote},
+		{`"“Unicode” ‘Quote’s’"`, `\"\M-b\M^@\M^\Unicode\M-b\M^@\M^] \M-b\M^@\M^XQuote\M-b\M^@\M^Ys\M-b\M^@\M^Y\"`, VisDoubleQuote},
+		{`"“Unicode” ‘Quote’s’"`, `\"\342\200\234Unicode\342\200\235 \342\200\230Quote\342\200\231s\342\200\231\"`, VisDoubleQuote | VisOctal},
 	} {
 		t.Run(fmt.Sprintf("Test%.2d", idx), func(t *testing.T) {
 			enc, err := Vis(test.input, test.flag)
