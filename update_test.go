@@ -5,7 +5,6 @@ package mtree
 
 import (
 	"container/heap"
-	"encoding/json"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -14,6 +13,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -23,93 +24,53 @@ func init() {
 //gocyclo:ignore
 func TestUpdate(t *testing.T) {
 	content := []byte("I know half of you half as well as I ought to")
-	dir, err := os.MkdirTemp("", "test-check-keywords")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir) // clean up
+	dir := t.TempDir()
 
 	tmpfn := filepath.Join(dir, "tmpfile")
-	if err := os.WriteFile(tmpfn, content, 0666); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(tmpfn, content, 0666))
 
 	// Walk this tempdir
 	dh, err := Walk(dir, nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoErrorf(t, err, "walk %s", dir)
 
 	// Touch a file, so the mtime changes.
 	now := time.Now()
-	if err := os.Chtimes(tmpfn, now, now); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(tmpfn, os.FileMode(0600)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Chtimes(tmpfn, now, now))
+	require.NoError(t, os.Chmod(tmpfn, os.FileMode(0600)))
 
 	// Changing user is a little tough, but the group can be changed by a limited user to any group that the user is a member of. So just choose one that is not the current main group.
 	u, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "get current user")
+
 	ugroups, err := u.GroupIds()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "get current user groups")
 	for _, ugroup := range ugroups {
 		if ugroup == u.Gid {
 			continue
 		}
 		gid, err := strconv.Atoi(ugroup)
-		if err != nil {
-			t.Fatal(ugroup)
-		}
-		if err := os.Lchown(tmpfn, -1, gid); err != nil {
-			t.Fatal(err)
-		}
+		require.NoErrorf(t, err, "parse group %q", ugroup)
+		require.NoError(t, os.Lchown(tmpfn, -1, gid))
 	}
 
 	// Check for sanity. This ought to have failures
 	res, err := Check(dir, dh, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res) == 0 {
-		t.Error("expected failures (like mtimes), but got none")
-	}
+	require.NoErrorf(t, err, "check %s", dir)
+	assert.NotEmpty(t, res, "should see mtime/chown/chtimes deltas from check")
 	//dh.WriteTo(os.Stdout)
 
 	res, err = Update(dir, dh, DefaultUpdateKeywords, nil)
-	if err != nil {
-		t.Error(err)
-	}
-	if len(res) > 0 {
-		// pretty this shit up
-		buf, err := json.MarshalIndent(res, "", "  ")
-		if err != nil {
-			t.Errorf("%#v", res)
-		}
-		t.Error(string(buf))
+	require.NoErrorf(t, err, "update %d", err)
+	if !assert.Empty(t, res, "update implied check") {
+		pprintInodeDeltas(t, res)
 	}
 
 	// Now check that we're sane again
 	res, err = Check(dir, dh, nil, nil)
-	if err != nil {
-		t.Fatal(err)
+	require.NoErrorf(t, err, "update %s", dir)
+	if !assert.Empty(t, res, "post-update check") {
+		pprintInodeDeltas(t, res)
 	}
-	// should have no failures now
-	if len(res) > 0 {
-		// pretty this shit up
-		buf, err := json.MarshalIndent(res, "", "  ")
-		if err != nil {
-			t.Errorf("%#v", res)
-		} else {
-			t.Error(string(buf))
-		}
-	}
-
 }
 
 func TestPathUpdateHeap(t *testing.T) {
@@ -127,11 +88,7 @@ func TestPathUpdateHeap(t *testing.T) {
 	var p string
 	for h.Len() > 0 {
 		p = heap.Pop(h).(pathUpdate).Path
-		if len(p) > longest {
-			t.Errorf("expected next path to be shorter, but it was not %q is longer than %d", p, longest)
-		}
+		assert.LessOrEqual(t, len(p), longest, "expected next path %q to be shorter", p)
 	}
-	if p != "." {
-		t.Errorf("expected \".\" to be the last, but got %q", p)
-	}
+	assert.Equal(t, ".", p, ". should be the last path")
 }
