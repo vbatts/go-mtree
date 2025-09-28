@@ -3,9 +3,11 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	cli "github.com/urfave/cli/v2"
@@ -80,9 +82,15 @@ func NewValidateCommand() *cli.Command {
 				Value: "bsd",
 				Usage: "output the validation results using the given format (bsd, json, path)",
 			},
+			&cli.BoolFlag{
+				Name:  "strict",
+				Usage: "enable strict validation of manifests (any discrepancy will result in an error)",
+			},
 		},
 	}
 }
+
+var errValidate = errors.New("manifest validation failed")
 
 func validateAction(c *cli.Context) error {
 	// -list-keywords
@@ -218,14 +226,6 @@ func validateAction(c *cli.Context) error {
 		if c.String("use-keywords") == "" && c.String("add-keywords") == "" {
 			currentKeywords = specKeywords
 		}
-
-		for _, keyword := range currentKeywords {
-			// As always, time is a special case.
-			// TODO: Fix that.
-			if (keyword == "time" && mtree.InKeywordSlice("tar_time", specKeywords)) || (keyword == "tar_time" && mtree.InKeywordSlice("time", specKeywords)) {
-				continue
-			}
-		}
 	}
 
 	// -p and -T are mutually exclusive
@@ -314,18 +314,14 @@ func validateAction(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		if res != nil {
-			out := formatFunc(res)
+		if len(res) > 0 {
+			out := formatFunc(res, c.Bool("strict"))
 			if _, err := os.Stdout.Write([]byte(out)); err != nil {
 				return err
 			}
-
-			// TODO: This should be a flag. Allowing files to be added and
-			//       removed and still returning "it's all good" is simply
-			//       unsafe IMO.
 			for _, diff := range res {
-				if diff.Type() == mtree.Modified {
-					return fmt.Errorf("manifest validation failed")
+				if c.Bool("strict") || diff.Type() == mtree.Modified {
+					return errValidate
 				}
 			}
 		}
@@ -369,22 +365,25 @@ func validateAction(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		if res != nil {
-			if isTarSpec(specDh) || c.String("tar") != "" {
-				res = filterMissingKeywords(res)
-			}
 
-			out := formatFunc(res)
+		// Apply filters.
+		var filters []deltaFilterFn
+		if isTarSpec(specDh) || c.String("tar") != "" {
+			filters = append(filters, tarKeywordFilter)
+		}
+		if !c.Bool("strict") {
+			filters = append(filters, freebsdCompatKeywordFilter)
+		}
+		res = filterDeltas(res, filters...)
+
+		if len(res) > 0 {
+			out := formatFunc(res, c.Bool("strict"))
 			if _, err := os.Stdout.Write([]byte(out)); err != nil {
 				return err
 			}
-
-			// TODO: This should be a flag. Allowing files to be added and
-			//       removed and still returning "it's all good" is simply
-			//       unsafe IMO.
 			for _, diff := range res {
-				if diff.Type() == mtree.Modified {
-					return fmt.Errorf("manifest validation failed")
+				if c.Bool("strict") || diff.Type() == mtree.Modified {
+					return errValidate
 				}
 			}
 		}
@@ -394,9 +393,9 @@ func validateAction(c *cli.Context) error {
 	return nil
 }
 
-var formats = map[string]func([]mtree.InodeDelta) string{
+var formats = map[string]func([]mtree.InodeDelta, bool) string{
 	// Outputs the errors in the BSD format.
-	"bsd": func(d []mtree.InodeDelta) string {
+	"bsd": func(d []mtree.InodeDelta, strict bool) string {
 		var buffer bytes.Buffer
 		for _, delta := range d {
 			fmt.Fprintln(&buffer, delta)
@@ -405,7 +404,7 @@ var formats = map[string]func([]mtree.InodeDelta) string{
 	},
 
 	// Outputs the full result struct in JSON.
-	"json": func(d []mtree.InodeDelta) string {
+	"json": func(d []mtree.InodeDelta, strict bool) string {
 		var buffer bytes.Buffer
 		if err := json.NewEncoder(&buffer).Encode(d); err != nil {
 			panic(err)
@@ -414,10 +413,10 @@ var formats = map[string]func([]mtree.InodeDelta) string{
 	},
 
 	// Outputs only the paths which failed to validate.
-	"path": func(d []mtree.InodeDelta) string {
+	"path": func(d []mtree.InodeDelta, strict bool) string {
 		var buffer bytes.Buffer
 		for _, delta := range d {
-			if delta.Type() == mtree.Modified {
+			if strict || delta.Type() == mtree.Modified {
 				fmt.Fprintln(&buffer, delta.Path())
 			}
 		}
@@ -437,53 +436,70 @@ func isDirEntry(e mtree.Entry) bool {
 	return false
 }
 
-// filterMissingKeywords is a fairly annoying hack to get around the fact that
-// tar archive manifest generation has certain unsolveable problems regarding
-// certain keywords. For example, the size=... keyword cannot be implemented
-// for directories in a tar archive (which causes Missing errors for that
-// keyword).
-//
-// This function just removes all instances of Missing errors for keywords.
-// This makes certain assumptions about the type of issues tar archives have.
-// Only call this on tar archive manifest comparisons.
-func filterMissingKeywords(diffs []mtree.InodeDelta) []mtree.InodeDelta {
-	newDiffs := []mtree.InodeDelta{}
-loop:
-	for _, diff := range diffs {
-		if diff.Type() == mtree.Modified {
-			// We only apply this filtering to directories.
-			// NOTE: This will probably break if someone drops the size keyword.
-			if isDirEntry(*diff.Old()) || isDirEntry(*diff.New()) {
-				// If this applies to '.' then we just filter everything
-				// (meaning we remove this entry). This is because note all tar
-				// archives include a '.' entry. Which makes checking this not
-				// practical.
-				if diff.Path() == "." {
-					continue
-				}
+// tarKeywordFilter is a filter for diffs produced where one half is a tar
+// archive. tar archive manifests do not have a "size" key associated with
+// directories (due to limitations in manifest generation for tar archives) and
+// so any deltas due to size missing should be removed.
+func tarKeywordFilter(delta *mtree.InodeDelta) bool {
+	if delta.Path() == "." {
+		// Not all tar archives include a root entry so we should skip that
+		// entry if we run into a diff that claims there is an issue with
+		// it.
+		return false
+	}
+	if delta.Type() != mtree.Modified {
+		return true
+	}
+	// Strip out "size" entries for directory entries.
+	if isDirEntry(*delta.Old()) || isDirEntry(*delta.New()) {
+		keys := delta.DiffPtr()
+		*keys = slices.DeleteFunc(*keys, func(kd mtree.KeyDelta) bool {
+			return kd.Name() == "size"
+		})
+	}
+	return true
+}
 
-				// Only filter out the size keyword.
-				// NOTE: This currently takes advantage of the fact the
-				//       diff.Diff() returns the actual slice to diff.keys.
-				keys := diff.Diff()
-				for idx, k := range keys {
-					// Delete the key if it's "size". Unfortunately in Go you
-					// can't delete from a slice without reassigning it. So we
-					// just overwrite it with the last value.
-					if k.Name() == "size" {
-						if len(keys) < 2 {
-							continue loop
-						}
-						keys[idx] = keys[len(keys)-1]
-					}
-				}
+// freebsdCompatKeywordFilter removes any deltas where a key is not present in
+// both manifests being compared. This is necessary for compatibility with
+// FreeBSD's mtree(8) but is generally undesireable for most users.
+func freebsdCompatKeywordFilter(delta *mtree.InodeDelta) bool {
+	if delta.Type() != mtree.Modified {
+		return true
+	}
+	keys := delta.DiffPtr()
+	*keys = slices.DeleteFunc(*keys, func(kd mtree.KeyDelta) bool {
+		if kd.Name().Prefix() == "xattr" {
+			// Even in FreeBSD compatibility mode, any xattr changes should
+			// still be treated as a proper change and not filtered out.
+			return false
+		}
+		return kd.Type() != mtree.Modified
+	})
+	return true
+}
+
+type deltaFilterFn func(*mtree.InodeDelta) bool
+
+// filterDeltas takes the set of deltas generated by mtree and applies the
+// given set of filters to it.
+func filterDeltas(deltas []mtree.InodeDelta, filters ...deltaFilterFn) []mtree.InodeDelta {
+	filtered := make([]mtree.InodeDelta, 0, len(deltas))
+next:
+	for _, delta := range deltas {
+		for _, filter := range filters {
+			if !filter(&delta) {
+				continue next
 			}
 		}
-
-		// If we got here, append to the new set.
-		newDiffs = append(newDiffs, diff)
+		// Some filters might modify the entry to remove keyword deltas --
+		// if there are no deltas left then we should skip the entry entirely.
+		if delta.Type() == mtree.Modified && len(delta.Diff()) == 0 {
+			continue next
+		}
+		filtered = append(filtered, delta)
 	}
-	return newDiffs
+	return filtered
 }
 
 // isTarSpec returns whether the spec provided came from the tar generator.
