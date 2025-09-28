@@ -6,9 +6,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func ExampleStreamer() {
@@ -56,27 +60,20 @@ func TestTar(t *testing.T) {
 		log.Println(fh.Stat())
 		fh.Close() */
 	fh, err := os.Open("./testdata/test.tar")
-	if err != nil {
-		t.Fatal(err)
-	}
-	str := NewTarStreamer(fh, nil, append(DefaultKeywords, "sha1"))
-
-	if _, err := io.Copy(io.Discard, str); err != nil && err != io.EOF {
-		t.Fatal(err)
-	}
-	if err := str.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer fh.Close()
 
-	// get DirectoryHierarcy struct from walking the tar archive
+	str := NewTarStreamer(fh, nil, append(DefaultKeywords, "sha1"))
+
+	n, err := io.Copy(io.Discard, str)
+	require.NoError(t, err, "read full tar stream")
+	require.NotZero(t, n, "tar stream should be non-empty")
+	require.NoError(t, str.Close(), "close tar stream")
+
+	// get DirectoryHierarchy struct from walking the tar archive
 	tdh, err := str.Hierarchy()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tdh == nil {
-		t.Fatal("expected a DirectoryHierarchy struct, but got nil")
-	}
+	require.NoError(t, err, "TarStreamer Hierarchy")
+	require.NotNil(t, tdh, "TarStreamer Hierarchy")
 
 	testDir, present := os.LookupEnv("MTREE_TESTDIR")
 	if present == false {
@@ -84,42 +81,26 @@ func TestTar(t *testing.T) {
 	}
 	testPath := filepath.Join(testDir, "test.mtree")
 	fh, err = os.Create(testPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.Remove(testPath)
 
 	// put output of tar walk into test.mtree
 	_, err = tdh.WriteTo(fh)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fh.Close()
+	require.NoError(t, err)
+	require.NoError(t, fh.Close())
 
 	// now simulate gomtree -T testdata/test.tar -f testdata/test.mtree
 	fh, err = os.Open(testPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer fh.Close()
 
 	dh, err := ParseSpec(fh)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoErrorf(t, err, "parse spec %s", fh.Name())
 
 	res, err := Compare(tdh, dh, append(DefaultKeywords, "sha1"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// print any failures, and then call t.Fatal once all failures/extra/missing
-	// are outputted
-	if len(res) > 0 {
-		for _, delta := range res {
-			t.Error(delta)
-		}
-		t.Fatal("unexpected errors")
+	require.NoError(t, err, "compare tar DirectoryHierarchy")
+	if !assert.Empty(t, res) {
+		pprintInodeDeltas(t, res)
 	}
 }
 
@@ -132,64 +113,44 @@ func TestTar(t *testing.T) {
 //gocyclo:ignore
 func TestArchiveCreation(t *testing.T) {
 	fh, err := os.Open("./testdata/collection.tar")
-	if err != nil {
-		t.Fatal(err)
-	}
-	str := NewTarStreamer(fh, nil, []Keyword{"sha1"})
-
-	if _, err := io.Copy(io.Discard, str); err != nil && err != io.EOF {
-		t.Fatal(err)
-	}
-	if err := str.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer fh.Close()
 
-	// get DirectoryHierarcy struct from walking the tar archive
+	str := NewTarStreamer(fh, nil, []Keyword{"sha1"})
+
+	n, err := io.Copy(io.Discard, str)
+	require.NoError(t, err, "read full tar stream")
+	require.NotZero(t, n, "tar stream should be non-empty")
+	require.NoError(t, str.Close(), "close tar stream")
+
+	// get DirectoryHierarchy struct from walking the tar archive
 	tdh, err := str.Hierarchy()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "TarStreamer Hierarchy")
+	require.NotNil(t, tdh, "TarStreamer Hierarchy")
 
 	// Test the tar manifest against the actual directory
-	res, err := Check("./testdata/collection", tdh, []Keyword{"sha1"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(res) > 0 {
-		for _, delta := range res {
-			t.Error(delta)
-		}
-		t.Fatal("unexpected errors")
+	dir := "./testdata/collection"
+	res, err := Check(dir, tdh, []Keyword{"sha1"}, nil)
+	require.NoErrorf(t, err, "check %s", dir)
+	if !assert.Empty(t, res, "check against tar DirectoryHierarchy") {
+		pprintInodeDeltas(t, res)
 	}
 
 	// Test the tar manifest against itself
 	res, err = Compare(tdh, tdh, []Keyword{"sha1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res) > 0 {
-		for _, delta := range res {
-			t.Error(delta)
-		}
-		t.Fatal("unexpected errors")
+	require.NoErrorf(t, err, "compare tar against itself")
+	if !assert.Empty(t, res, "compare tar against itself") {
+		pprintInodeDeltas(t, res)
 	}
 
 	// Validate the directory manifest against the archive
-	dh, err := Walk("./testdata/collection", nil, []Keyword{"sha1"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	dh, err := Walk(dir, nil, []Keyword{"sha1"}, nil)
+	require.NoErrorf(t, err, "walk %s", dir)
+
 	res, err = Compare(tdh, dh, []Keyword{"sha1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res) > 0 {
-		for _, delta := range res {
-			t.Error(delta)
-		}
-		t.Fatal("unexpected errors")
+	require.NoErrorf(t, err, "compare tar against %s walk", dir)
+	if !assert.Emptyf(t, res, "compare tar against %s walk", dir) {
+		pprintInodeDeltas(t, res)
 	}
 }
 
@@ -202,131 +163,104 @@ func TestArchiveCreation(t *testing.T) {
 //gocyclo:ignore
 func TestTreeTraversal(t *testing.T) {
 	fh, err := os.Open("./testdata/traversal.tar")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	defer fh.Close()
+
 	str := NewTarStreamer(fh, nil, DefaultTarKeywords)
 
-	if _, err = io.Copy(io.Discard, str); err != nil && err != io.EOF {
-		t.Fatal(err)
-	}
-	if err = str.Close(); err != nil {
-		t.Fatal(err)
-	}
+	n, err := io.Copy(io.Discard, str)
+	require.NoError(t, err, "read full tar stream")
+	require.NotZero(t, n, "tar stream should be non-empty")
+	require.NoError(t, str.Close(), "close tar stream")
 
-	fh.Close()
 	tdh, err := str.Hierarchy()
-
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "TarStreamer Hierarchy")
+	require.NotNil(t, tdh, "TarStreamer Hierarchy")
 
 	res, err := Compare(tdh, tdh, []Keyword{"sha1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res) > 0 {
-		for _, delta := range res {
-			t.Error(delta)
-		}
-		t.Fatal("unexpected errors")
+	require.NoErrorf(t, err, "compare tar against itself")
+	if !assert.Empty(t, res, "compare tar against itself") {
+		pprintInodeDeltas(t, res)
 	}
 
-	// top-level "." directory will contain contents of traversal.tar
 	res, err = Check("./testdata/.", tdh, []Keyword{"sha1"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res) > 0 {
-		var failed bool
-		for _, delta := range res {
-			// We only care about missing or modified files.
-			// The original test was written using the old check code.
-			if delta.Type() != Extra {
-				failed = true
-				t.Error(delta)
-			}
+	require.NoError(t, err, "check testdata dir")
+
+	// The top-level "." directory will contain contents of some extra files.
+	// This test was originally written with the pre-Compare Check code in mind
+	// (i.e., only file *modifications* were counted as errors).
+	res = slices.DeleteFunc(res, func(delta InodeDelta) bool {
+		skip := delta.Type() == Extra
+		if skip {
+			t.Logf("ignoring extra entry for %q", delta.Path())
 		}
-		if failed {
-			t.Fatal("unexpected errors")
-		}
+		return skip
+	})
+	if !assert.Emptyf(t, res, "compare %s against testdata walk", fh.Name()) {
+		pprintInodeDeltas(t, res)
 	}
 
-	// Now test an archive that requires placeholder directories, i.e, there are
-	// no headers in the archive that are associated with the actual directory name
+	// Now test an archive that requires placeholder directories, i.e, there
+	// are no headers in the archive that are associated with the actual
+	// directory name.
 	fh, err = os.Open("./testdata/singlefile.tar")
-	if err != nil {
-		t.Fatal(err)
-	}
-	str = NewTarStreamer(fh, nil, DefaultTarKeywords)
-	if _, err = io.Copy(io.Discard, str); err != nil && err != io.EOF {
-		t.Fatal(err)
-	}
-	if err = str.Close(); err != nil {
-		t.Fatal(err)
-	}
-	tdh, err = str.Hierarchy()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	defer fh.Close()
 
-	// Implied top-level "." directory will contain the contents of singlefile.tar
-	res, err = Check("./testdata/.", tdh, []Keyword{"sha1"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res) > 0 {
-		var failed bool
-		for _, delta := range res {
-			// We only care about missing or modified files.
-			// The original test was written using the old check code.
-			if delta.Type() != Extra {
-				failed = true
-				t.Error(delta)
-			}
+	str = NewTarStreamer(fh, nil, DefaultTarKeywords)
+
+	n, err = io.Copy(io.Discard, str)
+	require.NoError(t, err, "read full tar stream")
+	require.NotZero(t, n, "tar stream should be non-empty")
+	require.NoError(t, str.Close(), "close tar stream")
+
+	tdh, err = str.Hierarchy()
+	require.NoError(t, err, "TarStreamer Hierarchy")
+	require.NotNil(t, tdh, "TarStreamer Hierarchy")
+
+	// The top-level "." directory will contain contents of some extra files.
+	// This test was originally written with the pre-Compare Check code in mind
+	// (i.e., only file *modifications* were counted as errors).
+	res = slices.DeleteFunc(res, func(delta InodeDelta) bool {
+		skip := delta.Type() == Extra
+		if skip {
+			t.Logf("ignoring extra entry for %q", delta.Path())
 		}
-		if failed {
-			t.Fatal("unexpected errors")
-		}
+		return skip
+	})
+	if !assert.Emptyf(t, res, "compare %s against testdata walk", fh.Name()) {
+		pprintInodeDeltas(t, res)
 	}
 }
 
 func TestHardlinks(t *testing.T) {
 	fh, err := os.Open("./testdata/hardlinks.tar")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	defer fh.Close()
+
 	str := NewTarStreamer(fh, nil, append(DefaultTarKeywords, "nlink"))
 
-	if _, err = io.Copy(io.Discard, str); err != nil && err != io.EOF {
-		t.Fatal(err)
-	}
-	if err = str.Close(); err != nil {
-		t.Fatal(err)
-	}
+	n, err := io.Copy(io.Discard, str)
+	require.NoError(t, err, "read full tar stream")
+	require.NotZero(t, n, "tar stream should be non-empty")
+	require.NoError(t, str.Close(), "close tar stream")
 
-	fh.Close()
 	tdh, err := str.Hierarchy()
+	require.NoError(t, err, "TarStreamer Hierarchy")
+	require.NotNil(t, tdh, "TarStreamer Hierarchy")
 
-	if err != nil {
-		t.Fatal(err)
-	}
 	foundnlink := false
 	for _, e := range tdh.Entries {
 		if e.Type == RelativeType {
 			for _, kv := range e.Keywords {
 				if KeyVal(kv).Keyword() == "nlink" {
 					foundnlink = true
-					if KeyVal(kv).Value() != "3" {
-						t.Errorf("expected to have 3 hardlinks for %s", e.Name)
-					}
+					assert.Equalf(t, "3", KeyVal(kv).Value(), "expected 3 hardlinks for %s", e.Name)
 				}
 			}
 		}
 	}
-	if !foundnlink {
-		t.Errorf("nlink expected to be evaluated")
-	}
+	require.True(t, foundnlink, "there should be an nlink entry")
 }
 
 type fakeFile struct {
@@ -375,23 +309,20 @@ func makeTarStream(ff []fakeFile) ([]byte, error) {
 
 func TestArchiveExcludeNonDirectory(t *testing.T) {
 	fh, err := os.Open("./testdata/collection.tar")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	defer fh.Close()
+
 	str := NewTarStreamer(fh, []ExcludeFunc{ExcludeNonDirectories}, []Keyword{"type"})
 
-	if _, err := io.Copy(io.Discard, str); err != nil && err != io.EOF {
-		t.Fatal(err)
-	}
-	if err := str.Close(); err != nil {
-		t.Fatal(err)
-	}
-	fh.Close()
-	// get DirectoryHierarcy struct from walking the tar archive
+	n, err := io.Copy(io.Discard, str)
+	require.NoError(t, err, "read full tar stream")
+	require.NotZero(t, n, "tar stream should be non-empty")
+	require.NoError(t, str.Close(), "close tar stream")
+
 	tdh, err := str.Hierarchy()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "TarStreamer Hierarchy")
+	require.NotNil(t, tdh, "TarStreamer Hierarchy")
+
 	for i := range tdh.Entries {
 		for _, keyval := range tdh.Entries[i].AllKeys() {
 			if tdh.Entries[i].Type == FullType || tdh.Entries[i].Type == RelativeType {
