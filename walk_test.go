@@ -3,43 +3,38 @@ package mtree
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWalk(t *testing.T) {
-	dh, err := Walk(".", nil, append(DefaultKeywords, "sha1"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	numEntries := countTypes(dh)
+	walkDh, err := Walk(".", nil, append(DefaultKeywords, "sha1"), nil)
+	require.NoError(t, err, "walk .")
+	walkEntries := countTypes(walkDh)
 
-	fh, err := os.CreateTemp("", "walk.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(fh.Name())
+	fh, err := os.CreateTemp(t.TempDir(), "walk.")
+	require.NoError(t, err)
 	defer fh.Close()
 
-	if _, err = dh.WriteTo(fh); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := fh.Seek(0, 0); err != nil {
-		t.Fatal(err)
-	}
-	if dh, err = ParseSpec(fh); err != nil {
-		t.Fatal(err)
-	}
-	for k, v := range countTypes(dh) {
-		if numEntries[k] != v {
-			t.Errorf("for type %s: expected %d, got %d", k, numEntries[k], v)
-		}
-	}
+	n, err := walkDh.WriteTo(fh)
+	require.NoError(t, err, "write directory hierarchy representation")
+	assert.NotZero(t, n, "output mtree spec should be non-empty")
+
+	_, err = fh.Seek(0, 0)
+	require.NoError(t, err)
+
+	specDh, err := ParseSpec(fh)
+	require.NoErrorf(t, err, "parse spec %s", fh.Name())
+
+	specEntries := countTypes(specDh)
+
+	assert.Equal(t, walkEntries, specEntries, "round-trip specfile should have the same set of entries")
 }
 
 func TestWalkDirectory(t *testing.T) {
 	dh, err := Walk(".", []ExcludeFunc{ExcludeNonDirectories}, []Keyword{"type"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "walk . (ExcludeNonDirectories)")
 
 	for i := range dh.Entries {
 		for _, keyval := range dh.Entries[i].AllKeys() {

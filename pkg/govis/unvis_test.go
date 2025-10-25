@@ -19,19 +19,24 @@ package govis
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUnvisError(t *testing.T) {
 	for _, test := range []string{
-		// Octal escape codes allow you to specify invalid byte values.
+		// Octal escape codes allow you to specify invalid ASCII values.
 		"\\777",
 		"\\420\\322\\455",
 		"\\652\\233",
 	} {
-		got, err := Unvis(test, DefaultVisFlags)
-		if err == nil {
-			t.Errorf("expected unvis(%q) to give an error, got %q", test, got)
-		}
+		t.Run(test, func(t *testing.T) {
+			_, err := Unvis(test, DefaultVisFlags)
+			require.Errorf(t, err, "invalid octal escape should give an error")
+			assert.ErrorContains(t, err, "escape base 8")
+			assert.ErrorContains(t, err, "outside latin-1 encoding")
+		})
 	}
 }
 
@@ -52,14 +57,11 @@ func TestUnvisCStyleEscape(t *testing.T) {
 		{"test\\\ning", "testing"},
 		{"test\\$\\$ing", "testing"},
 	} {
-		got, err := Unvis(test.input, DefaultVisFlags)
-		if err != nil {
-			t.Errorf("unexpected error doing unvis(%q): %q", test.input, err)
-			continue
-		}
-		if got != test.expected {
-			t.Errorf("expected unvis(%q) = %q, got %q", test.input, test.expected, got)
-		}
+		t.Run(test.input, func(t *testing.T) {
+			got, err := Unvis(test.input, DefaultVisFlags)
+			require.NoErrorf(t, err, "unvis(%q)", test.input)
+			assert.Equal(t, test.expected, got, "unvis(%q)", test.input)
+		})
 	}
 }
 
@@ -76,14 +78,11 @@ func TestUnvisMetaEscape(t *testing.T) {
 		// TODO: Add some more of these tests, but I need to have some
 		//       secondary source to verify these outputs properly.
 	} {
-		got, err := Unvis(test.input, DefaultVisFlags)
-		if err != nil {
-			t.Errorf("unexpected error doing unvis(%q): %q", test.input, err)
-			continue
-		}
-		if got != test.expected {
-			t.Errorf("expected unvis(%q) = %q, got %q", test.input, test.expected, got)
-		}
+		t.Run(test.input, func(t *testing.T) {
+			got, err := Unvis(test.input, DefaultVisFlags)
+			require.NoErrorf(t, err, "unvis(%q)", test.input)
+			assert.Equal(t, test.expected, got, "unvis(%q)", test.input)
+		})
 	}
 }
 
@@ -106,14 +105,11 @@ func TestUnvisOctalEscape(t *testing.T) {
 		// Some invalid characters...
 		{"\\377\\2\\225\\264", "\xff\x02\x95\xb4"},
 	} {
-		got, err := Unvis(test.input, DefaultVisFlags)
-		if err != nil {
-			t.Errorf("unexpected error doing unvis(%q): %q", test.input, err)
-			continue
-		}
-		if got != test.expected {
-			t.Errorf("expected unvis(%q) = %q, got %q", test.input, test.expected, got)
-		}
+		t.Run(test.input, func(t *testing.T) {
+			got, err := Unvis(test.input, DefaultVisFlags)
+			require.NoErrorf(t, err, "unvis(%q)", test.input)
+			assert.Equal(t, test.expected, got, "unvis(%q)", test.input)
+		})
 	}
 }
 
@@ -134,14 +130,11 @@ func TestUnvisHexEscape(t *testing.T) {
 		// Some invalid characters...
 		{"\\xff\\x02\\x95\\xb4", "\xff\x02\x95\xb4"},
 	} {
-		got, err := Unvis(test.input, DefaultVisFlags)
-		if err != nil {
-			t.Errorf("unexpected error doing unvis(%q): %q", test.input, err)
-			continue
-		}
-		if got != test.expected {
-			t.Errorf("expected unvis(%q) = %q, got %q", test.input, test.expected, got)
-		}
+		t.Run(test.input, func(t *testing.T) {
+			got, err := Unvis(test.input, DefaultVisFlags)
+			require.NoErrorf(t, err, "unvis(%q)", test.input)
+			assert.Equal(t, test.expected, got, "unvis(%q)", test.input)
+		})
 	}
 }
 
@@ -154,13 +147,10 @@ func TestUnvisUnicode(t *testing.T) {
 		"NetLock_Arany_=Class_Gold=_Főtanúsítvány.pem",
 		"TÜBİTAK_UEKAE_Kök_Sertifika_Hizmet_Sağlayıcısı_-_Sürüm_3.pem",
 	} {
-		got, err := Unvis(test, DefaultVisFlags)
-		if err != nil {
-			t.Errorf("unexpected error doing unvis(%q): %s", test, err)
-			continue
-		}
-		if got != test {
-			t.Errorf("expected %q to be unchanged, got %q", test, got)
-		}
+		t.Run(test, func(t *testing.T) {
+			enc, err := Unvis(test, DefaultVisFlags)
+			require.NoErrorf(t, err, "unvis(%q)", test)
+			assert.Equalf(t, test, enc, "decoding of %q should be the same as original", test)
+		})
 	}
 }
