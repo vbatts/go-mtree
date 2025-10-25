@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -228,6 +229,77 @@ func TestCompareKeySubset(t *testing.T) {
 	if !assert.Empty(t, diffs, "size-only compare should not return any entries") {
 		pprintInodeDeltas(t, diffs)
 	}
+}
+
+func TestCompareKeyDelta(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a bunch of objects.
+	tmpfile := filepath.Join(dir, "tmpfile")
+	require.NoError(t, os.WriteFile(tmpfile, []byte("some content here"), 0666))
+
+	tmpdir := filepath.Join(dir, "testdir")
+	require.NoError(t, os.Mkdir(tmpdir, 0755))
+
+	tmpsubfile := filepath.Join(tmpdir, "anotherfile")
+	require.NoError(t, os.WriteFile(tmpsubfile, []byte("aaa"), 0666))
+
+	// Walk the current state.
+	manifestKeywords := append(DefaultKeywords[:], "sha1digest")
+	old, err := Walk(dir, nil, manifestKeywords, nil)
+	require.NoErrorf(t, err, "walk %s", dir)
+
+	t.Run("Extra-Key", func(t *testing.T) {
+		extraKeyword := Keyword("sha256digest")
+		newManifestKeywords := append(manifestKeywords[:], extraKeyword)
+
+		new, err := Walk(dir, nil, newManifestKeywords, nil)
+		require.NoErrorf(t, err, "walk %s", dir)
+
+		diffs, err := Compare(old, new, nil)
+		require.NoError(t, err, "compare")
+
+		assert.NotEmpty(t, diffs, "extra keys in manifest should result in deltas")
+		for _, diff := range diffs {
+			if assert.Equal(t, Modified, diff.Type(), "extra keyword diff element should be 'modified'") {
+				kds := diff.Diff()
+				if assert.Len(t, kds, 1, "should only get a single key delta") {
+					kd := kds[0]
+					assert.Equalf(t, Extra, kd.Type(), "key %q", kd.Name())
+					assert.Equal(t, extraKeyword, kd.Name())
+					assert.Nil(t, kd.Old(), "Old for extra keyword delta")
+					assert.NotNil(t, kd.New(), "New for extra keyword delta")
+				}
+			}
+		}
+	})
+
+	t.Run("Missing-Key", func(t *testing.T) {
+		missingKeyword := Keyword("sha1digest")
+		newManifestKeywords := slices.DeleteFunc(manifestKeywords[:], func(kw Keyword) bool {
+			return kw == missingKeyword
+		})
+
+		new, err := Walk(dir, nil, newManifestKeywords, nil)
+		require.NoErrorf(t, err, "walk %s", dir)
+
+		diffs, err := Compare(old, new, nil)
+		require.NoError(t, err, "compare")
+
+		assert.NotEmpty(t, diffs, "missing keys in manifest should result in deltas")
+		for _, diff := range diffs {
+			if assert.Equal(t, Modified, diff.Type(), "missing keyword diff element should be 'modified'") {
+				kds := diff.Diff()
+				if assert.Len(t, kds, 1, "should only get a single key delta") {
+					kd := kds[0]
+					assert.Equalf(t, Missing, kd.Type(), "key %q", kd.Name())
+					assert.Equal(t, missingKeyword, kd.Name())
+					assert.NotNil(t, kd.Old(), "Old for missing keyword delta")
+					assert.Nil(t, kd.New(), "New for missing keyword delta")
+				}
+			}
+		}
+	})
 }
 
 //gocyclo:ignore
