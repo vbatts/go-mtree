@@ -1,6 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
 /*
  * govis: unicode aware vis(3) encoding implementation
- * Copyright (C) 2017 SUSE LLC.
+ * Copyright (C) 2017-2025 SUSE LLC.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -213,4 +214,22 @@ func TestVisFlagsString(t *testing.T) {
 			assert.Equal(t, test.expected, got, "VisFlag(%+x).String")
 		})
 	}
+}
+
+func TestUnknownVisFlagsError(t *testing.T) {
+	t.Run("Vis", func(t *testing.T) {
+		enc, err := Vis("dummy text", visMask+1)
+		require.Error(t, err, "Vis with invalid flags should fail")
+		assert.ErrorIs(t, err, errUnknownVisFlagsError, "Vis with invalid flags")
+		assert.ErrorContains(t, err, "contains unknown or unsupported flags", "Vis with invalid flags")
+		assert.Equal(t, "", enc, "error Vis should return empty string")
+	})
+
+	t.Run("Unvis", func(t *testing.T) {
+		dec, err := Unvis("dummy text", visMask+1)
+		require.Error(t, err, "Unvis with invalid flags should fail")
+		assert.ErrorIs(t, err, errUnknownVisFlagsError, "Unvis with invalid flags")
+		assert.ErrorContains(t, err, "contains unknown or unsupported flags", "Vis with invalid flags")
+		assert.Equal(t, "", dec, "error Unvis should return empty string")
+	})
 }

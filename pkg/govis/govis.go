@@ -1,6 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
 /*
  * govis: unicode aware vis(3) encoding implementation
- * Copyright (C) 2017 SUSE LLC.
+ * Copyright (C) 2017-2025 SUSE LLC.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +19,8 @@
 package govis
 
 import (
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -29,19 +32,39 @@ type VisFlag uint
 // mtree only uses one set of flags, implementing them all is necessary in
 // order to have compatibility with BSD's vis() and unvis() commands.
 const (
-	VisOctal     VisFlag = (1 << iota)     // VIS_OCTAL: Use octal \ddd format.
-	VisCStyle                              // VIS_CSTYLE: Use \[nrft0..] where appropriate.
-	VisSpace                               // VIS_SP: Also encode space.
-	VisTab                                 // VIS_TAB: Also encode tab.
-	VisNewline                             // VIS_NL: Also encode newline.
-	VisSafe                                // VIS_SAFE: Encode unsafe characters.
-	VisNoSlash                             // VIS_NOSLASH: Inhibit printing '\'.
-	VisHTTPStyle                           // VIS_HTTPSTYLE: HTTP-style escape %xx.
-	VisGlob                                // VIS_GLOB: Encode glob(3) magics.
-	visMask      VisFlag = (1 << iota) - 1 // Mask of all flags.
+	VisOctal       VisFlag = (1 << iota)     // VIS_OCTAL: Use octal \ddd format.
+	VisCStyle                                // VIS_CSTYLE: Use \[nrft0..] where appropriate.
+	VisSpace                                 // VIS_SP: Also encode space.
+	VisTab                                   // VIS_TAB: Also encode tab.
+	VisNewline                               // VIS_NL: Also encode newline.
+	VisSafe                                  // VIS_SAFE: Encode unsafe characters.
+	VisNoSlash                               // VIS_NOSLASH: Inhibit printing '\'.
+	VisHTTPStyle                             // VIS_HTTPSTYLE: HTTP-style escape %xx.
+	VisGlob                                  // VIS_GLOB: Encode glob(3) magics.
+	VisDoubleQuote                           // VIS_DQ: Encode double-quotes (").
+	visMask        VisFlag = (1 << iota) - 1 // Mask of all flags.
 
 	VisWhite VisFlag = (VisSpace | VisTab | VisNewline)
 )
+
+// errUnknownVisFlagsError is a special value that lets you use [errors.Is]
+// with [unknownVisFlagsError]. Don't actually return this value, use
+// [unknownVisFlagsError] instead!
+var errUnknownVisFlagsError = errors.New("unknown or unsupported vis flags")
+
+// unknownVisFlagsError represents an error caused by unknown [VisFlag]s being
+// passed to [Vis] or [Unvis].
+type unknownVisFlagsError struct {
+	flags VisFlag
+}
+
+func (err unknownVisFlagsError) Is(target error) bool {
+	return target == errUnknownVisFlagsError
+}
+
+func (err unknownVisFlagsError) Error() string {
+	return fmt.Sprintf("%s contains unknown or unsupported flags %s", err.flags, err.flags&^visMask)
+}
 
 // String pretty-prints VisFlag.
 func (vflags VisFlag) String() string {
