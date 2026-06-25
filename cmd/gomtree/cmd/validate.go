@@ -58,6 +58,11 @@ func NewValidateCommand() *cli.Command {
 				Aliases: []string{"d"},
 				Usage:   "Ignore everything except directory type files",
 			},
+			&cli.BoolFlag{
+				Name:    "ignore-extra",
+				Aliases: []string{"e"},
+				Usage:   "Don't report files present in the hierarchy but absent from the spec",
+			},
 			&cli.StringFlag{
 				Name:    "exclude-file",
 				Aliases: []string{"X"},
@@ -406,6 +411,12 @@ func validateAction(c *cli.Context) error {
 		}
 		if !c.Bool("strict") {
 			filters = append(filters, freebsdCompatKeywordFilter)
+		}
+		// -e
+		if c.Bool("ignore-extra") {
+			filters = append(filters, func(d *mtree.InodeDelta) bool {
+				return d.Type() != mtree.Extra
+			})
 		}
 		res = filterDeltas(res, filters...)
 
