@@ -46,6 +46,11 @@ func NewValidateCommand() *cli.Command {
 				Aliases: []string{"k"},
 				Usage:   "Use only the specified (delimited by comma or space) keywords as the current set of keywords",
 			},
+			&cli.StringFlag{
+				Name:    "remove-keywords",
+				Aliases: []string{"R"},
+				Usage:   "Remove the specified (delimited by comma or space) keywords from the current set of keywords. If 'all' is specified, remove all keywords.",
+			},
 			&cli.BoolFlag{
 				Name:    "directory-only",
 				Aliases: []string{"d"},
@@ -142,6 +147,18 @@ func validateAction(c *cli.Context) error {
 			if !mtree.InKeywordSlice(kw, tmpKeywords) {
 				tmpKeywords = append(tmpKeywords, kw)
 			}
+		}
+	}
+
+	// -R <keywords>
+	if c.String("remove-keywords") != "" {
+		removeKws := splitKeywordsArg(c.String("remove-keywords"))
+		if mtree.InKeywordSlice("all", removeKws) {
+			tmpKeywords = []mtree.Keyword{}
+		} else {
+			tmpKeywords = slices.DeleteFunc(tmpKeywords, func(kw mtree.Keyword) bool {
+				return mtree.InKeywordSlice(kw, removeKws)
+			})
 		}
 	}
 
