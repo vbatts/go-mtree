@@ -1,0 +1,15 @@
+# ./lib
+lib type=dir mode=0644
+    foo mode=0644 size=12288 time=1457644483.833957552 type=file
+
+..
+
+./lib type=dir mode=0644
+
+
+ayo mode=0644 size=12288 time=1457644483.833957552 type=file
+
+lib/dir/sub type=dir
+lib/dir/sub/file.txt type=file
+
+lib/dir/PKG.info type=file mode=0644
