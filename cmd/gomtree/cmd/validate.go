@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -55,6 +57,11 @@ func NewValidateCommand() *cli.Command {
 				Name:    "directory-only",
 				Aliases: []string{"d"},
 				Usage:   "Ignore everything except directory type files",
+			},
+			&cli.StringFlag{
+				Name:    "exclude-file",
+				Aliases: []string{"X"},
+				Usage:   "File containing fnmatch(3) patterns of paths to exclude, one per line. Patterns with '/' are matched against the full relative path; others against the basename only. Lines starting with '#' are comments.",
 			},
 			&cli.BoolFlag{
 				Name:    "update-attributes",
@@ -260,6 +267,15 @@ func validateAction(c *cli.Context) error {
 	// -d
 	if c.Bool("directory-only") {
 		excludes = append(excludes, mtree.ExcludeNonDirectories)
+	}
+
+	// -X <exclude-file>
+	if c.String("exclude-file") != "" {
+		patterns, err := readExcludePatterns(c.String("exclude-file"))
+		if err != nil {
+			return err
+		}
+		excludes = append(excludes, excludeByPatterns(rootPath, patterns))
 	}
 
 	// -u
@@ -540,6 +556,51 @@ func isTarSpec(spec *mtree.DirectoryHierarchy) bool {
 
 	// Should never be reached.
 	return false
+}
+
+// readExcludePatterns reads fnmatch patterns from a file, one per line.
+// Blank lines and lines beginning with '#' are ignored.
+func readExcludePatterns(filename string) ([]string, error) {
+	fh, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+
+	var patterns []string
+	scanner := bufio.NewScanner(fh)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		patterns = append(patterns, line)
+	}
+	return patterns, scanner.Err()
+}
+
+// excludeByPatterns returns an ExcludeFunc that excludes paths matching any of
+// the given fnmatch patterns. Patterns containing '/' are matched against the
+// path relative to rootPath; others are matched against the basename only.
+func excludeByPatterns(rootPath string, patterns []string) mtree.ExcludeFunc {
+	return func(path string, info os.FileInfo) bool {
+		rel, err := filepath.Rel(rootPath, path)
+		if err != nil {
+			rel = path
+		}
+		for _, pattern := range patterns {
+			var matched bool
+			if strings.Contains(pattern, "/") {
+				matched, _ = filepath.Match(pattern, rel)
+			} else {
+				matched, _ = filepath.Match(pattern, filepath.Base(rel))
+			}
+			if matched {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 func splitKeywordsArg(str string) []mtree.Keyword {
