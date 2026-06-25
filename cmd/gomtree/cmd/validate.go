@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -46,10 +48,30 @@ func NewValidateCommand() *cli.Command {
 				Aliases: []string{"k"},
 				Usage:   "Use only the specified (delimited by comma or space) keywords as the current set of keywords",
 			},
+			&cli.StringFlag{
+				Name:    "remove-keywords",
+				Aliases: []string{"R"},
+				Usage:   "Remove the specified (delimited by comma or space) keywords from the current set of keywords. If 'all' is specified, remove all keywords.",
+			},
 			&cli.BoolFlag{
 				Name:    "directory-only",
 				Aliases: []string{"d"},
 				Usage:   "Ignore everything except directory type files",
+			},
+			&cli.BoolFlag{
+				Name:    "ignore-extra",
+				Aliases: []string{"e"},
+				Usage:   "Don't report files present in the hierarchy but absent from the spec",
+			},
+			&cli.BoolFlag{
+				Name:    "no-xdev",
+				Aliases: []string{"x"},
+				Usage:   "Don't descend below mount points in the file hierarchy",
+			},
+			&cli.StringFlag{
+				Name:    "exclude-file",
+				Aliases: []string{"X"},
+				Usage:   "File containing fnmatch(3) patterns of paths to exclude, one per line. Patterns with '/' are matched against the full relative path; others against the basename only. Lines starting with '#' are comments.",
 			},
 			&cli.BoolFlag{
 				Name:    "update-attributes",
@@ -142,6 +164,18 @@ func validateAction(c *cli.Context) error {
 			if !mtree.InKeywordSlice(kw, tmpKeywords) {
 				tmpKeywords = append(tmpKeywords, kw)
 			}
+		}
+	}
+
+	// -R <keywords>
+	if c.String("remove-keywords") != "" {
+		removeKws := splitKeywordsArg(c.String("remove-keywords"))
+		if mtree.InKeywordSlice("all", removeKws) {
+			tmpKeywords = []mtree.Keyword{}
+		} else {
+			tmpKeywords = slices.DeleteFunc(tmpKeywords, func(kw mtree.Keyword) bool {
+				return mtree.InKeywordSlice(kw, removeKws)
+			})
 		}
 	}
 
@@ -243,6 +277,24 @@ func validateAction(c *cli.Context) error {
 	// -d
 	if c.Bool("directory-only") {
 		excludes = append(excludes, mtree.ExcludeNonDirectories)
+	}
+
+	// -x
+	if c.Bool("no-xdev") {
+		exFn, err := mtree.ExcludeMountPoints(rootPath)
+		if err != nil {
+			return err
+		}
+		excludes = append(excludes, exFn)
+	}
+
+	// -X <exclude-file>
+	if c.String("exclude-file") != "" {
+		patterns, err := readExcludePatterns(c.String("exclude-file"))
+		if err != nil {
+			return err
+		}
+		excludes = append(excludes, excludeByPatterns(rootPath, patterns))
 	}
 
 	// -u
@@ -373,6 +425,12 @@ func validateAction(c *cli.Context) error {
 		}
 		if !c.Bool("strict") {
 			filters = append(filters, freebsdCompatKeywordFilter)
+		}
+		// -e
+		if c.Bool("ignore-extra") {
+			filters = append(filters, func(d *mtree.InodeDelta) bool {
+				return d.Type() != mtree.Extra
+			})
 		}
 		res = filterDeltas(res, filters...)
 
@@ -523,6 +581,51 @@ func isTarSpec(spec *mtree.DirectoryHierarchy) bool {
 
 	// Should never be reached.
 	return false
+}
+
+// readExcludePatterns reads fnmatch patterns from a file, one per line.
+// Blank lines and lines beginning with '#' are ignored.
+func readExcludePatterns(filename string) ([]string, error) {
+	fh, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+
+	var patterns []string
+	scanner := bufio.NewScanner(fh)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		patterns = append(patterns, line)
+	}
+	return patterns, scanner.Err()
+}
+
+// excludeByPatterns returns an ExcludeFunc that excludes paths matching any of
+// the given fnmatch patterns. Patterns containing '/' are matched against the
+// path relative to rootPath; others are matched against the basename only.
+func excludeByPatterns(rootPath string, patterns []string) mtree.ExcludeFunc {
+	return func(path string, info os.FileInfo) bool {
+		rel, err := filepath.Rel(rootPath, path)
+		if err != nil {
+			rel = path
+		}
+		for _, pattern := range patterns {
+			var matched bool
+			if strings.Contains(pattern, "/") {
+				matched, _ = filepath.Match(pattern, rel)
+			} else {
+				matched, _ = filepath.Match(pattern, filepath.Base(rel))
+			}
+			if matched {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 func splitKeywordsArg(str string) []mtree.Keyword {

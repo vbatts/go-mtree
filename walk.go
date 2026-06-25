@@ -56,6 +56,9 @@ func Walk(root string, excludes []ExcludeFunc, keywords []Keyword, fsEval FsEval
 		}
 		for _, ex := range excludes {
 			if ex(path, info) {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 		}
