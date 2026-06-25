@@ -63,6 +63,11 @@ func NewValidateCommand() *cli.Command {
 				Aliases: []string{"e"},
 				Usage:   "Don't report files present in the hierarchy but absent from the spec",
 			},
+			&cli.BoolFlag{
+				Name:    "no-xdev",
+				Aliases: []string{"x"},
+				Usage:   "Don't descend below mount points in the file hierarchy",
+			},
 			&cli.StringFlag{
 				Name:    "exclude-file",
 				Aliases: []string{"X"},
@@ -272,6 +277,15 @@ func validateAction(c *cli.Context) error {
 	// -d
 	if c.Bool("directory-only") {
 		excludes = append(excludes, mtree.ExcludeNonDirectories)
+	}
+
+	// -x
+	if c.Bool("no-xdev") {
+		exFn, err := mtree.ExcludeMountPoints(rootPath)
+		if err != nil {
+			return err
+		}
+		excludes = append(excludes, exFn)
 	}
 
 	// -X <exclude-file>
