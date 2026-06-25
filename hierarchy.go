@@ -5,13 +5,13 @@ import (
 	"sort"
 )
 
-// DirectoryHierarchy is the mapped structure for an mtree directory hierarchy
-// spec
+// DirectoryHierarchy is the mapped structure for an mtree directory hierarchy specification.
 type DirectoryHierarchy struct {
 	Entries []Entry
 }
 
-// WriteTo simplifies the output of the resulting hierarchy spec
+// WriteTo simplifies the output of the resulting hierarchy spec.
+// Satisfies the `io.WriterTo` interface.
 func (dh DirectoryHierarchy) WriteTo(w io.Writer) (n int64, err error) {
 	sort.Sort(byPos(dh.Entries))
 	var sum int64
