@@ -142,59 +142,32 @@ func validateAction(c *cli.Context) error {
 		return fmt.Errorf("invalid output format: %s", c.String("result-format"))
 	}
 
-	var (
-		err             error
-		tmpKeywords     []mtree.Keyword
-		currentKeywords []mtree.Keyword
-	)
+	var err error
 
-	// -k <keywords>
-	if c.String("use-keywords") != "" {
-		tmpKeywords = splitKeywordsArg(c.String("use-keywords"))
-		if !mtree.InKeywordSlice("type", tmpKeywords) {
-			tmpKeywords = append([]mtree.Keyword{"type"}, tmpKeywords...)
-		}
+	// Build keyword set via WalkOptions.
+	// Tar mode starts from DefaultTarKeywords; filesystem mode from DefaultKeywords.
+	var walkOpts *mtree.WalkOptions
+	if c.String("tar") != "" {
+		walkOpts = mtree.NewWalkOptionsFrom(mtree.DefaultTarKeywords)
 	} else {
-		if c.String("tar") != "" {
-			tmpKeywords = mtree.DefaultTarKeywords[:]
-		} else {
-			tmpKeywords = mtree.DefaultKeywords[:]
-		}
+		walkOpts = mtree.NewWalkOptions()
 	}
+	applyKeywordFlags(walkOpts, c)
 
-	// -K <keywords>
-	if c.String("add-keywords") != "" {
-		for _, kw := range splitKeywordsArg(c.String("add-keywords")) {
-			if !mtree.InKeywordSlice(kw, tmpKeywords) {
-				tmpKeywords = append(tmpKeywords, kw)
-			}
-		}
-	}
-
-	// -R <keywords>
-	if c.String("remove-keywords") != "" {
-		removeKws := splitKeywordsArg(c.String("remove-keywords"))
-		if mtree.InKeywordSlice("all", removeKws) {
-			tmpKeywords = []mtree.Keyword{}
-		} else {
-			tmpKeywords = slices.DeleteFunc(tmpKeywords, func(kw mtree.Keyword) bool {
-				return mtree.InKeywordSlice(kw, removeKws)
-			})
-		}
-	}
-
-	// -bsd-keywords
+	// -bsd-keywords: filter to BSD-compatible keywords, warning about each dropped one.
 	if c.Bool("bsd-keywords") {
-		for _, k := range tmpKeywords {
-			if mtree.Keyword(k).Bsd() {
-				currentKeywords = append(currentKeywords, k)
+		var bsdKws []mtree.Keyword
+		for _, k := range walkOpts.Keywords() {
+			if k.Bsd() {
+				bsdKws = append(bsdKws, k)
 			} else {
 				fmt.Fprintf(os.Stderr, "INFO: ignoring %q as it is not an upstream keyword\n", k)
 			}
 		}
-	} else {
-		currentKeywords = tmpKeywords
+		walkOpts.UseKeywords(bsdKws)
 	}
+
+	currentKeywords := walkOpts.Keywords()
 
 	// Check mutual exclusivity of keywords.
 	// TODO(cyphar): Abstract this inside keywords.go.
@@ -262,7 +235,8 @@ func validateAction(c *cli.Context) error {
 	if specKeywords != nil {
 		// If the user hasn't explicitly changed the keyword set, use the spec's.
 		if c.String("use-keywords") == "" && c.String("add-keywords") == "" && c.String("remove-keywords") == "" {
-			currentKeywords = specKeywords
+			walkOpts.UseKeywords(specKeywords)
+			currentKeywords = walkOpts.Keywords()
 		}
 	}
 
@@ -277,10 +251,9 @@ func validateAction(c *cli.Context) error {
 		rootPath = c.String("path")
 	}
 
-	excludes := []mtree.ExcludeFunc{}
 	// -d
 	if c.Bool("directory-only") {
-		excludes = append(excludes, mtree.ExcludeNonDirectories)
+		walkOpts.AddExclude(mtree.ExcludeNonDirectories)
 	}
 
 	// -x
@@ -289,7 +262,7 @@ func validateAction(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		excludes = append(excludes, exFn)
+		walkOpts.AddExclude(exFn)
 	}
 
 	// -X <exclude-file>
@@ -298,7 +271,7 @@ func validateAction(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		excludes = append(excludes, excludeByPatterns(rootPath, patterns))
+		walkOpts.AddExclude(excludeByPatterns(rootPath, patterns))
 	}
 
 	// -C: dump spec with full paths
@@ -349,7 +322,7 @@ func validateAction(c *cli.Context) error {
 			defer fh.Close()
 			input = fh
 		}
-		ts := mtree.NewTarStreamer(input, excludes, currentKeywords)
+		ts := mtree.NewTarStreamer(input, walkOpts.Excludes(), currentKeywords)
 
 		if _, err := io.Copy(io.Discard, ts); err != nil && err != io.EOF {
 			return err
@@ -375,7 +348,7 @@ func validateAction(c *cli.Context) error {
 		}
 	} else {
 		// with a root directory
-		stateDh, err = mtree.Walk(rootPath, excludes, currentKeywords, nil)
+		stateDh, err = walkOpts.Walk(rootPath)
 		if err != nil {
 			return err
 		}
@@ -667,4 +640,17 @@ func splitKeywordsArg(str string) []mtree.Keyword {
 		keywords = append(keywords, mtree.KeywordSynonym(kw))
 	}
 	return keywords
+}
+
+// applyKeywordFlags applies -k/-K/-R flag values from c to o.
+func applyKeywordFlags(o *mtree.WalkOptions, c *cli.Context) {
+	if c.String("use-keywords") != "" {
+		o.UseKeywords(splitKeywordsArg(c.String("use-keywords")))
+	}
+	if c.String("add-keywords") != "" {
+		o.AddKeywords(splitKeywordsArg(c.String("add-keywords"))...)
+	}
+	if c.String("remove-keywords") != "" {
+		o.RemoveKeywords(splitKeywordsArg(c.String("remove-keywords"))...)
+	}
 }

@@ -26,6 +26,15 @@ func NewWalkOptions() *WalkOptions {
 	}
 }
 
+// NewWalkOptionsFrom returns a WalkOptions initialised with the given keyword
+// set. Use this when a keyword set other than DefaultKeywords is needed as the
+// starting point (e.g. DefaultTarKeywords).
+func NewWalkOptionsFrom(kws []Keyword) *WalkOptions {
+	return &WalkOptions{
+		keywords: append([]Keyword{}, kws...),
+	}
+}
+
 // UseKeywords replaces the keyword set entirely with kws.
 // "type" is always prepended if not already present, because the hierarchy
 // traversal depends on it.
@@ -49,7 +58,12 @@ func (o *WalkOptions) AddKeywords(kws ...Keyword) *WalkOptions {
 }
 
 // RemoveKeywords removes kws from the current keyword set.
+// Passing the special value "all" clears the keyword set entirely.
 func (o *WalkOptions) RemoveKeywords(kws ...Keyword) *WalkOptions {
+	if InKeywordSlice("all", kws) {
+		o.keywords = []Keyword{}
+		return o
+	}
 	o.keywords = slices.DeleteFunc(o.keywords, func(kw Keyword) bool {
 		return InKeywordSlice(kw, kws)
 	})
@@ -72,6 +86,11 @@ func (o *WalkOptions) SetFsEval(fsEval FsEval) *WalkOptions {
 // Keywords returns a copy of the current keyword set.
 func (o *WalkOptions) Keywords() []Keyword {
 	return o.keywords[:]
+}
+
+// Excludes returns a copy of the current exclude list.
+func (o *WalkOptions) Excludes() []ExcludeFunc {
+	return o.excludes[:]
 }
 
 // Walk creates a DirectoryHierarchy rooted at root using these options.

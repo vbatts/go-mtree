@@ -91,6 +91,36 @@ func TestWalkOptions_chaining(t *testing.T) {
 	}
 }
 
+func TestWalkOptions_RemoveKeywords_all(t *testing.T) {
+	o := NewWalkOptions().RemoveKeywords("all")
+	if len(o.Keywords()) != 0 {
+		t.Errorf("expected empty keyword set after RemoveKeywords(all), got %v", o.Keywords())
+	}
+}
+
+func TestNewWalkOptionsFrom(t *testing.T) {
+	o := NewWalkOptionsFrom(DefaultTarKeywords)
+	if !InKeywordSlice("tar_time", o.Keywords()) {
+		t.Error("expected tar_time in keywords from DefaultTarKeywords")
+	}
+	if InKeywordSlice("time", o.Keywords()) {
+		t.Error("expected time NOT in keywords from DefaultTarKeywords")
+	}
+	// Must be independent from the global — mutations must not affect DefaultTarKeywords.
+	before := len(DefaultTarKeywords)
+	o.RemoveKeywords("tar_time")
+	if len(DefaultTarKeywords) != before {
+		t.Error("RemoveKeywords mutated DefaultTarKeywords")
+	}
+}
+
+func TestWalkOptions_Excludes(t *testing.T) {
+	o := NewWalkOptions().AddExclude(ExcludeNonDirectories)
+	if len(o.Excludes()) != 1 {
+		t.Errorf("expected 1 exclude, got %d", len(o.Excludes()))
+	}
+}
+
 func TestWalkOptions_Walk(t *testing.T) {
 	dh, err := NewWalkOptions().
 		UseKeywords([]Keyword{"type", "mode"}).
