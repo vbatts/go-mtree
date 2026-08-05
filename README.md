@@ -93,6 +93,59 @@ However, GNU tar truncates a file's modification time to 1-second precision.
 That is, if a file's full modification time is 123456789.123456789, the "tar time" equivalent would be 123456789.000000000.
 This way, if you validate a manifest created using a tar file against an actual root directory, there will be no complaints from `go-mtree` so long as the 1-second precision time of a file in the root directory is the same.
 
+### JSON form
+
+`go-mtree` can also represent a hierarchy specification as JSON via the
+`mtree2json` subcommand (alias `m2j`).
+This is a **go-mtree extension** — it is not part of the BSD mtree(8) format
+and is not interoperable with other `mtree` implementations.
+
+The output is a JSON array.
+Each element represents one file or directory entry and has two fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `path` | string | Full relative path from the spec root (e.g. `"."`, `"subdir"`, `"subdir/file.txt"`) |
+| `keywords` | object | Map of keyword name → value for that entry (inheriting `/set` defaults) |
+
+```json
+[
+  {
+    "path": ".",
+    "keywords": {
+      "gid": "1000",
+      "mode": "0755",
+      "nlink": "6",
+      "size": "4096",
+      "time": "1459370393.273231538",
+      "type": "dir",
+      "uid": "1000"
+    }
+  },
+  {
+    "path": "LICENSE",
+    "keywords": {
+      "gid": "1000",
+      "mode": "0644",
+      "nlink": "1",
+      "sha256digest": "ef4e53d83096be56dc38dbf9bc8ba9e3068bec1ec37c179033d1e8f99a1c2a95",
+      "size": "1502",
+      "time": "1458851690.0",
+      "type": "file",
+      "uid": "1000"
+    }
+  }
+]
+```
+
+Keyword values are always strings, matching the representation used in the
+mtree spec itself (e.g. `"0644"` for mode, `"1459370393.273231538"` for time).
+
+The keyword set can be narrowed with `-k` (use only), `-K` (add), and `-R`
+(remove) — the same flags accepted by `validate`.
+Input can be an existing spec file (`-f`), a directory to walk (`-p`), or
+stdin (default when neither flag is given).
+
 ## Usage
 
 To use the Go programming language library, see [the docs][godoc].

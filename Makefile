@@ -2,11 +2,10 @@
 BUILD := gomtree
 BUILDPATH := github.com/vbatts/go-mtree/cmd/gomtree
 CWD := $(shell pwd)
-SOURCE_FILES := $(shell find . -type f -name "*.go")
+SOURCE_FILES = $(shell find . -type f -name "*.go")
 CLEAN_FILES := *~
 TAGS :=
 ARCHES := linux,386 linux,amd64 linux,arm linux,arm64 linux,mips64 linux,riscv64 openbsd,amd64 windows,amd64 windows,arm64 darwin,amd64 darwin,arm64
-GO_VER := go1.14
 
 default: build validation
 
